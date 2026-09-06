@@ -90,8 +90,19 @@ the shipped sources stay shipped, so they keep improving.
 ## Develop
 
 ```sh
-make test     # python -m unittest discover -s tests
+make test     # python -m unittest discover -s tests -t .
 make lint     # ruff
 make run      # the window, straight from the source tree
 make install  # build and install the Arch package
 ```
+
+`PRODUCT.md` is what this is and what it must never become; `TODO.md` is what
+is open. The tests delete files, so run them through `make test` — anything
+else and a guard stops them before they touch a real collection.
+
+Modules: `paths` (every path, importing nothing), `config` (the shipped sources
+and your deltas), `net`, `desktop` (notifications, hyprctl, hyprpaper),
+`library` (the collection on disk), `sources` (the template engine), `cli`, and
+`gui/` (`style`, `thumbs`, `sheets`, `settings`, `window`, `app`). Importing
+`paperboy.gui` is what pulls in GTK, which is why the CLI does it inside the
+`gui` subcommand and nowhere else.
