@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paperboy"
+version = "1.0.0"
+description = "One new photograph a day, and the ones you kept."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Jaeho Cho" }]
+keywords = ["wallpaper", "hyprland", "hyprpaper", "bing", "wallhaven"]
+
+# PyGObject is deliberately absent. `paperboy gui` needs GTK4 and libadwaita,
+# which come from the distribution (python-gobject, gtk4, libadwaita) and not
+# from an index; the other five commands need nothing but the standard library,
+# which is what lets the fetch sit in a systemd timer.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/jaehho/paperboy"
+
+[project.scripts]
+paperboy = "paperboy.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["paperboy*"]
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["B008"]
