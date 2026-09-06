@@ -53,15 +53,15 @@ def cmd_gui(args) -> int:
     libadwaita and a display connection -- never happens on the fetch/set/like
     paths that run from a timer and a keybind.
 
-    It calls the functions above directly rather than shelling out to itself, so
-    there is one implementation of every behaviour and the CLI and the window
-    cannot drift apart.
+    It calls the commands directly rather than shelling out to itself, so
+    there is one implementation of every behaviour and the CLI and the
+    window cannot drift apart.
 
-    The window has no header bar. There is exactly one piece of content here and
-    it is a photograph; framing it in application chrome is the thing a picture
-    frame exists not to do. So the photo bleeds to all four edges, cropped the
-    same way hyprpaper will crop it -- what you see is the wallpaper, not a
-    preview of it -- and everything else is a caption plate laid over the
+    The window has no header bar. There is exactly one piece of content
+    here and it is a photograph; framing it in application chrome is the
+    thing a picture frame exists not to do. So the photo bleeds to all four
+    edges, cropped the same way hyprpaper will crop it -- what you see is the
+    wallpaper, not a preview of it -- and the rest is a caption plate over the
     bottom. The cost is that close and drag have to be handled by hand, below.
     """
     import math
@@ -120,7 +120,9 @@ def cmd_gui(args) -> int:
         color: {C['overlay2']};
     }}
     .plate-action:hover {{ color: {C['text']}; }}
-    .plate-action.danger:hover {{ color: mix({C['maroon']}, {C['text']}, 0.45); }}
+    .plate-action.danger:hover {{
+        color: mix({C['maroon']}, {C['text']}, 0.45);
+    }}
     .plate-action.on    {{ color: mix({C['blue']}, {C['text']}, 0.55); }}
     .plate-action:disabled {{ color: {C['overlay0']}; }}
 
@@ -168,7 +170,8 @@ def cmd_gui(args) -> int:
         font-weight: 600; letter-spacing: 1.4px;
     }}
     .panel-title {{ font-size: 11px; color: {C['text']}; }}
-    .section     {{ font-size: 10px; color: mix({C['overlay2']}, {C['text']}, 0.35); }}
+    .section     {{ font-size: 10px;
+                    color: mix({C['overlay2']}, {C['text']}, 0.35); }}
     .field-label {{ font-size: 9px;  color: {C['overlay0']}; }}
     .footnote    {{ font-family: {DISPLAY}; font-size: 11px;
                     color: {C['overlay0']}; }}
@@ -251,7 +254,8 @@ def cmd_gui(args) -> int:
     .guide-foot {{
         font-family: {DISPLAY}; font-size: 12px; color: {C['overlay0']};
     }}
-    .key-action {{ font-family: {DISPLAY}; font-size: 13px; color: {C['text']}; }}
+    .key-action {{ font-family: {DISPLAY}; font-size: 13px;
+                   color: {C['text']}; }}
 
     /* A whole row is the target -- a source is a name you turn on, not a
        property with a switch beside it. */
@@ -410,8 +414,9 @@ def cmd_gui(args) -> int:
             overlay = Gtk.Overlay()
             self.toasts.set_child(overlay)
 
-            # The photograph is the window. COVER, so the crop matches the one
-            # hyprpaper applies -- this is the wallpaper, not a thumbnail of it.
+            # The photograph is the window. COVER, so the crop matches
+            # what hyprpaper does -- this is the wallpaper itself, not a
+            # thumbnail of it.
             self.hero = Gtk.Picture(
                 content_fit=Gtk.ContentFit.COVER, hexpand=True, vexpand=True,
                 can_focus=True,
@@ -490,7 +495,8 @@ def cmd_gui(args) -> int:
             self.revealer.set_child(plate)
 
             self.title = Gtk.Label(
-                xalign=0, ellipsize=Pango.EllipsizeMode.END, single_line_mode=True,
+                xalign=0, ellipsize=Pango.EllipsizeMode.END,
+                single_line_mode=True,
             )
             self.title.add_css_class("plate-title")
             plate.append(self.title)
@@ -521,7 +527,8 @@ def cmd_gui(args) -> int:
             self.size.add_css_class("plate-row")
             facts.append(self.size)
 
-            self.source = Gtk.Button(label="", tooltip_text="Open the source page")
+            self.source = Gtk.Button(
+                label="", tooltip_text="Open the source page")
             self.source.add_css_class("plate-action")
             self.source.add_css_class("plate-link")
             self.source.connect("clicked", self.on_source)
@@ -642,9 +649,10 @@ def cmd_gui(args) -> int:
             rule.add_css_class("hairline")
             column.append(rule)
 
-            path = Gtk.Label(label=str(CONFIG).replace(str(Path.home()), "~"),
-                             xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR,
-                             selectable=True)
+            path = Gtk.Label(
+                label=str(CONFIG).replace(str(Path.home()), "~"),
+                xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR,
+                selectable=True)
             path.add_css_class("footnote")
             column.append(path)
 
@@ -787,7 +795,7 @@ def cmd_gui(args) -> int:
             try:
                 save_config(cfg)
             except OSError as problem:
-                self.set_status(f"Not saved \u2014 {problem.strerror}", bad=True)
+                self.set_status(f"Not saved: {problem.strerror}", bad=True)
                 return
             self.fill_sources()
             self.set_focus(self.source_rows.get(name) or self.first_row)
@@ -806,7 +814,7 @@ def cmd_gui(args) -> int:
             try:
                 save_config(cfg)
             except OSError as problem:
-                self.set_status(f"Not saved \u2014 {problem.strerror}", bad=True)
+                self.set_status(f"Not saved: {problem.strerror}", bad=True)
                 return
             self.fill_sources()
             # The row you just pressed no longer exists -- without this,
@@ -816,7 +824,7 @@ def cmd_gui(args) -> int:
                 self.set_status("No source is switched on. Tomorrow\u2019s "
                                 "fetch will have nowhere to look.", bad=True)
             elif name in on and needs_setup(cfg.get(name) or {}):
-                self.set_status(f"{name} needs a key before it can work \u2014 "
+                self.set_status(f"{name} needs a key before it can work; "
                                 f"there is a box for it below the row.",
                                 bad=True)
             elif name in on:

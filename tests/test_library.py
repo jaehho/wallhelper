@@ -6,6 +6,12 @@ import zlib
 
 from paperboy import library
 from paperboy.paths import CREDITS, DIR, KEPT
+from tests import guard
+
+
+def setUpModule():
+    guard()
+
 
 
 def png(width: int, height: int) -> bytes:

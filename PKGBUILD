@@ -33,7 +33,7 @@ build() {
 
 check() {
     cd "$srcdir/$_name"
-    python -m unittest discover -s tests
+    python -m unittest discover -s tests -t .
 }
 
 package() {

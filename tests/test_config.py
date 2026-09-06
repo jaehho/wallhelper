@@ -5,6 +5,12 @@ import unittest
 
 from paperboy import config as cfg
 from paperboy.paths import CONFIG
+from tests import guard
+
+
+def setUpModule():
+    guard()
+
 
 
 class Merge(unittest.TestCase):

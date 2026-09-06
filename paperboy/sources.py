@@ -105,7 +105,8 @@ def fetch_source(name: str, spec: dict) -> Path | None:
             return None
         entries = found
 
-    demands = spec.get("require") if isinstance(spec.get("require"), dict) else {}
+    demands = spec.get("require")
+    demands = demands if isinstance(demands, dict) else {}
     try:
         floor = int(spec.get("min_width") or 0)
     except (TypeError, ValueError):

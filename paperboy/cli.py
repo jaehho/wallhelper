@@ -31,9 +31,9 @@ def cmd_fetch(args) -> int:
     DIR.mkdir(parents=True, exist_ok=True)
     KEPT.mkdir(parents=True, exist_ok=True)
 
-    # One photo a day, whichever source it came from. Without this, a second run
-    # finds Bing already has today's, falls through to wallhaven -- which almost
-    # always succeeds -- and quietly stacks up a second image.
+    # One photo a day, whichever source it came from. Without this, a
+    # second run finds Bing already has today's, falls through to wallhaven
+    # -- which almost always succeeds -- and stacks up a second image.
     today = time.strftime("%Y%m%d")
     if not args.next and list(DIR.glob(f"{today}-*")):
         print("paperboy: already have today's photo (--next to pull another)")

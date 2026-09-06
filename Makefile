@@ -7,7 +7,7 @@ help:            ## this list
 	  | sed 's/:.*## /\t/' | expand -t18
 
 test:            ## run the test suite
-	python -m unittest discover -s tests -v
+	python -m unittest discover -s tests -t . -v
 
 lint:            ## ruff
 	ruff check paperboy tests

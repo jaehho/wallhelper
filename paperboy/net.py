@@ -14,7 +14,8 @@ from pathlib import Path
 UA = "paperboy/1.0"
 
 
-def fetch_url(url: str, timeout: int = 30, headers: dict | None = None) -> bytes:
+def fetch_url(url: str, timeout: int = 30,
+              headers: dict | None = None) -> bytes:
     sent = {"User-Agent": UA}
     if isinstance(headers, dict):
         sent.update({str(k): str(v) for k, v in headers.items()})
@@ -24,7 +25,7 @@ def fetch_url(url: str, timeout: int = 30, headers: dict | None = None) -> bytes
 
 
 def download(url: str, dest: Path) -> bool:
-    """Write via a tempfile so a truncated transfer never lands in the folder."""
+    """Via a tempfile, so a truncated transfer never lands in the folder."""
     tmp = dest.with_name(f".fetch-{os.getpid()}")
     try:
         data = fetch_url(url, timeout=120)
@@ -32,7 +33,7 @@ def download(url: str, dest: Path) -> bool:
             return False
         tmp.write_bytes(data)
         # Trust the bytes, not the extension.
-        if not data[:2] in (b"\xff\xd8", b"\x89P", b"RI", b"BM"):
+        if data[:2] not in (b"\xff\xd8", b"\x89P", b"RI", b"BM"):
             return False
         tmp.chmod(0o644)           # mktemp-style 0600 would be odd here
         tmp.replace(dest)

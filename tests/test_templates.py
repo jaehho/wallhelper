@@ -3,6 +3,12 @@
 import unittest
 
 from paperboy.sources import dig, fill
+from tests import guard
+
+
+def setUpModule():
+    guard()
+
 
 REPLY = {
     "images": [{"urlbase": "/th?id=OHR.Lake", "title": "A reservoir",

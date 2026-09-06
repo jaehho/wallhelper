@@ -19,7 +19,8 @@ from .paths import CREDITS, CURRENT, DIR, IMAGE_SUFFIXES, KEPT, THUMBS
 
 def slugify(text: str, limit: int = 44) -> str:
     """A filename fragment that survives a foreign title and stays readable."""
-    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    plain = unicodedata.normalize("NFKD", text) \
+        .encode("ascii", "ignore").decode()
     out = "".join(char if char.isalnum() else "-" for char in plain)
     while "--" in out:
         out = out.replace("--", "-")
@@ -95,9 +96,9 @@ def remember(name: str, title: str, byline: str, url: str) -> None:
 
 
 def canonical(path: Path) -> Path:
-    """kept/ holds hardlinks, so a kept photo has two paths to one inode. Always
-    prefer the one in the folder proper: displaying the kept/ path means
-    `like --undo` would unlink the very file on screen."""
+    """kept/ holds hardlinks, so a kept photo has two paths to one inode.
+    Always prefer the one in the folder proper: displaying the kept/ path
+    means `keep --undo` would unlink the very file on screen."""
     if path.parent == KEPT and (DIR / path.name).is_file():
         return DIR / path.name
     return path
@@ -219,8 +220,8 @@ def measure(path: Path) -> tuple[int, int] | None:
 def set_wallpaper(image: Path, push: bool = True) -> None:
     """Repoint .current (durable) and push to every output (immediate).
 
-    hyprpaper 0.8's empty-monitor wildcard -- `wallpaper ",path"` -- is accepted
-    over IPC and silently does nothing, so each output has to be named. Resolve
+    hyprpaper 0.8's empty-monitor wildcard -- `wallpaper ",path"` -- is
+    accepted over IPC and silently does nothing, so name each output. Resolve
     first: .current must not point at another symlink, or pruning the middle
     link leaves it dangling.
     """
