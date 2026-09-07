@@ -45,9 +45,11 @@ Neither of these is authorised yet; ask before doing either.
 
 - The units were switched from `wallpaper-fetch` to `paperboy-fetch` by hand,
   not by `make sync`. `systemctl --user enable` alone leaves a timer *enabled
-  but dead* until the next login, which is how tomorrow's photograph nearly
-  did not arrive; it wants `enable --now`, or `start` after the fact. Worth a
-  check in `scripts/status.sh` that an enabled timer is also active.
+  but dead* until the next login; it wants `enable --now`, or `start` after
+  the fact. `make status` does check `is-active`, so it would have caught this
+  — nobody ran it.
+- `make status` now also reports whether the installed `paperboy-git` matches
+  this repo's HEAD. It reports; it does not rebuild.
 
 ## Known and deliberate
 
