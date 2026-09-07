@@ -8,10 +8,10 @@ Neither of these is authorised yet; ask before doing either.
       already points there and does not resolve until this happens.
 - [ ] Submit `paperboy-git` to the AUR. `packages/arch/97-apps.txt` in dotfiles
       already lists it, so `make sync` will try to install it.
-- [ ] Until then, install with `/tmp/install-paperboy.sh`, which rewrites
-      `source=` to the local checkout. **Not yet run** — there is no `paperboy`
-      on `PATH`, so `hypr-settings-menu` and `paperboy-fetch.timer` both point
-      at nothing.
+- [x] Install locally with `/tmp/install-paperboy.sh`, which rewrites `source=`
+      to the local checkout. Re-run it after every commit until the repo is
+      published — `paperboy-git`'s version is the commit it was built from, so
+      the installed `/usr/bin/paperboy` otherwise lags the working tree.
 - [ ] Retire the ancestors once this is installed and has run for a few days:
       archive `github.com/jaehho/hypr-tools` and `hypr-wallpaper`, orphan the
       `hypr-wallpaper-git` AUR package. Also unauthorised.
@@ -40,6 +40,14 @@ Neither of these is authorised yet; ask before doing either.
       same steps. One of them should be written in terms of the other.
 - [ ] Candidates nobody has asked for yet: NASA Earth Observatory, Met Museum
       Open Access, Flickr Commons. Each is a config object, not code.
+
+## Watch for
+
+- The units were switched from `wallpaper-fetch` to `paperboy-fetch` by hand,
+  not by `make sync`. `systemctl --user enable` alone leaves a timer *enabled
+  but dead* until the next login, which is how tomorrow's photograph nearly
+  did not arrive; it wants `enable --now`, or `start` after the fact. Worth a
+  check in `scripts/status.sh` that an enabled timer is also active.
 
 ## Known and deliberate
 
