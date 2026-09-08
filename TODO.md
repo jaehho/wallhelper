@@ -6,9 +6,11 @@
 - [x] `paperboy-git` on the AUR. `packages/arch/97-apps.txt` lists it, so
       `make sync` installs it on a fresh machine and `paru -Syu` (Devel is on)
       rebuilds it whenever this repo moves. Nothing else to do to stay current.
-- [ ] Run `/tmp/install-paperboy.sh` once, to replace the locally-built package
-      with the AUR one. Until then paru has no devel record for it and upgrades
-      will skip it; `make status` says `stale` while that is true.
+- [x] Installed from the AUR, so paru has a devel record and `paru -Syu` will
+      rebuild it when this repo moves. That record lives in
+      `~/.local/state/paru/devel.toml` — paru's man page calls it `devel.json`
+      and points at the data dir, and both are wrong. `paru --gendb` writes it
+      for every installed VCS package if it is ever missing.
 - [ ] Retire the ancestors once this has run for a few days: archive
       `github.com/jaehho/hypr-tools` and `hypr-wallpaper`, orphan the
       `hypr-wallpaper-git` AUR package. Not authorised yet.
