@@ -11,9 +11,10 @@
       `~/.local/state/paru/devel.toml` — paru's man page calls it `devel.json`
       and points at the data dir, and both are wrong. `paru --gendb` writes it
       for every installed VCS package if it is ever missing.
-- [ ] Retire the ancestors once this has run for a few days: archive
-      `github.com/jaehho/hypr-tools` and `hypr-wallpaper`, orphan the
-      `hypr-wallpaper-git` AUR package. Not authorised yet.
+- [x] Ancestors retired 2026-09-08. `github.com/jaehho/hypr-tools` is archived
+      with a README pointing here (and at `monitors.lua` for the other half of
+      it); `hypr-wallpaper-git` and `hypr-monitor-git` are orphaned on the AUR.
+      Both had zero votes, so orphaning rather than a deletion request.
 
 ## Next — the window
 
