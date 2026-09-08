@@ -1,20 +1,17 @@
 # TODO
 
-## Now — publish
+## Now
 
-Neither of these is authorised yet; ask before doing either.
-
-- [ ] Create `github.com/jaehho/paperboy` and push. `PKGBUILD`'s `source=`
-      already points there and does not resolve until this happens.
-- [ ] Submit `paperboy-git` to the AUR. `packages/arch/97-apps.txt` in dotfiles
-      already lists it, so `make sync` will try to install it.
-- [x] Install locally with `/tmp/install-paperboy.sh`, which rewrites `source=`
-      to the local checkout. Re-run it after every commit until the repo is
-      published — `paperboy-git`'s version is the commit it was built from, so
-      the installed `/usr/bin/paperboy` otherwise lags the working tree.
-- [ ] Retire the ancestors once this is installed and has run for a few days:
-      archive `github.com/jaehho/hypr-tools` and `hypr-wallpaper`, orphan the
-      `hypr-wallpaper-git` AUR package. Also unauthorised.
+- [x] `github.com/jaehho/paperboy` — public, pushed.
+- [x] `paperboy-git` on the AUR. `packages/arch/97-apps.txt` lists it, so
+      `make sync` installs it on a fresh machine and `paru -Syu` (Devel is on)
+      rebuilds it whenever this repo moves. Nothing else to do to stay current.
+- [ ] Run `/tmp/install-paperboy.sh` once, to replace the locally-built package
+      with the AUR one. Until then paru has no devel record for it and upgrades
+      will skip it; `make status` says `stale` while that is true.
+- [ ] Retire the ancestors once this has run for a few days: archive
+      `github.com/jaehho/hypr-tools` and `hypr-wallpaper`, orphan the
+      `hypr-wallpaper-git` AUR package. Not authorised yet.
 
 ## Next — the window
 

@@ -30,8 +30,9 @@ than on the next daily fetch.
 
    ```fish
    git clone ssh://aur@aur.archlinux.org/paperboy-git.git aur-paperboy
-   cp PKGBUILD .SRCINFO dev.jaeho.Paperboy.desktop aur-paperboy/
-   cd aur-paperboy; git add -A
+   cp PKGBUILD .SRCINFO aur-paperboy/     # the .desktop ships in the source
+   cd aur-paperboy; git branch -m master  # the AUR rejects a push to main
+   git add -A
    git commit -m "Initial import: paperboy-git"
    git push
    ```
