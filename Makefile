@@ -16,13 +16,16 @@ run:             ## the window, from the source tree
 	python -m paperboy.cli gui
 
 install:         ## build and install the Arch package (asks for sudo)
-	makepkg -si --noconfirm
+	cd packaging && makepkg -si --noconfirm
 
 uninstall:       ## remove the Arch package
 	sudo pacman -Rns paperboy-git
 
 package:         ## build the Arch package without installing
-	makepkg -f
+	cd packaging && makepkg -f
+
+srcinfo:         ## regenerate packaging/.SRCINFO after a recipe change
+	cd packaging && makepkg --printsrcinfo > .SRCINFO
 
 clean:
 	rm -rf build dist src pkg *.egg-info **/__pycache__ *.pkg.tar.zst

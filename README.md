@@ -12,8 +12,11 @@ Built for Hyprland and hyprpaper. The window is GTK4 and libadwaita.
 ## Install
 
 ```sh
-paru -S paperboy-git          # or: git clone … && makepkg -si
+paru -S paperboy-git
 ```
+
+Or from a checkout: `make install`. See `packaging/` for the recipe and the
+AUR workflow.
 
 ## Use
 
