@@ -11,25 +11,35 @@
       dirs. `~/Pictures/wallpapers` is unchanged — `DIR` was never name-derived,
       so the collection survived untouched.
 
-Outstanding, all outside this repo:
+Outside this repo, done 2026-09-09:
 
-- [ ] Rename the GitHub repo to `jaehho/wallhelper`. GitHub redirects the old
-      URL, so the `source=` in a stale checkout keeps resolving; that is a
-      grace period, not a reason to skip it.
-- [ ] Push `wallhelper-git` to the AUR as a new pkgbase, then file a deletion
-      request for `paperboy-git`. Zero votes, so deletion rather than a merge —
-      a merge would carry the misleading name into the new package's history.
+- [x] GitHub repo renamed to `jaehho/wallhelper`; remote repointed, pushed.
+      The old URL redirects, so a stale checkout's `source=` still resolves.
+- [x] `wallhelper-git` pushed to the AUR as a new pkgbase, after a clean
+      `makepkg -f` — 41 tests in `check()`, `/usr/bin/wallhelper` and
+      `dev.jaeho.Wallhelper.desktop` in the tarball, no trace of the old name.
+- [x] dotfiles: units renamed to `wallhelper-fetch.*`, `97-apps.txt`,
+      `sync.sh`, `status.sh`, `hypr-settings-menu`, and the hyprland window
+      rule (it matched on class `dev\.jaeho\.Paperboy`, which would have
+      silently stopped floating the window). Left uncommitted — that repo had
+      unrelated work in the tree.
+- [x] `~/.config/waypaper/config.ini` `post_command`, which is not stowed:
+      waypaper rewrites the file on exit, so it is edited in place or not at
+      all.
+
+Still open:
+
+- [ ] Run `/tmp/wallhelper-swap.sh` — installs `wallhelper-git`, moves the
+      three state dirs, removes `paperboy-git`, relinks the stowed units and
+      `enable --now`s the timer, then `paru --gendb`. Needs sudo, so it is a
+      script rather than something run for you. Until it runs, the stowed unit
+      symlinks under `~/.config/systemd/user` dangle: their targets were
+      renamed out from under them.
+- [ ] File the deletion request for `paperboy-git`. The AUR's SSH interface has
+      no command for it (`adopt`, `disown`, `flag`, `vote`, `set-keywords`, and
+      nothing else) — it is the web form at
+      `aur.archlinux.org/pkgbase/paperboy-git/request/`, so it wants a login.
 - [ ] Reply to m040601 on the `paperboy-git` page saying where it went.
-- [ ] dotfiles: `packages/arch/97-apps.txt` still lists `paperboy-git`, and the
-      units are still `paperboy-fetch.service`/`.timer`. Renaming the units
-      wants `disable --now` on the old pair before `enable --now` on the new,
-      or the old timer keeps firing a binary that no longer exists.
-- [ ] Local state: `/tmp/wallhelper-migrate.sh` moves `~/.config/paperboy`,
-      `~/.cache/paperboy` and `~/.local/state/paperboy` to their new homes.
-      Run it before the first `wallhelper fetch`, or the settings panel opens
-      on defaults and the guide replays.
-- [ ] `paru --gendb` after the reinstall, so the devel record points at the new
-      pkgbase instead of the deleted one.
 
 ## Next — the window
 
