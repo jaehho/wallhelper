@@ -2,19 +2,34 @@
 
 ## Now
 
-- [x] `github.com/jaehho/paperboy` — public, pushed.
-- [x] `paperboy-git` on the AUR. `packages/arch/97-apps.txt` lists it, so
-      `make sync` installs it on a fresh machine and `paru -Syu` (Devel is on)
-      rebuilds it whenever this repo moves. Nothing else to do to stay current.
-- [x] Installed from the AUR, so paru has a devel record and `paru -Syu` will
-      rebuild it when this repo moves. That record lives in
-      `~/.local/state/paru/devel.toml` — paru's man page calls it `devel.json`
-      and points at the data dir, and both are wrong. `paru --gendb` writes it
-      for every installed VCS package if it is ever missing.
-- [x] Ancestors retired 2026-09-08. `github.com/jaehho/hypr-tools` is archived
-      with a README pointing here (and at `monitors.lua` for the other half of
-      it); `hypr-wallpaper-git` and `hypr-monitor-git` are orphaned on the AUR.
-      Both had zero votes, so orphaning rather than a deletion request.
+- [x] Renamed `paperboy` -> `wallhelper` 2026-09-09. The AUR's `paperboy` (and
+      `paperboy-bin`) have been 2mol/pboy since 2019; `paperboy-git` read as
+      the VCS build of it, and the recipe's `provides`/`conflicts=('paperboy')`
+      actively claimed to satisfy it. Both lines are gone with the name.
+      Everything in-repo is renamed: package dir, entry point, app-id
+      `dev.jaeho.Wallhelper`, `WALLHELPER_DIR`/`WALLHELPER_CONFIG`, the XDG
+      dirs. `~/Pictures/wallpapers` is unchanged — `DIR` was never name-derived,
+      so the collection survived untouched.
+
+Outstanding, all outside this repo:
+
+- [ ] Rename the GitHub repo to `jaehho/wallhelper`. GitHub redirects the old
+      URL, so the `source=` in a stale checkout keeps resolving; that is a
+      grace period, not a reason to skip it.
+- [ ] Push `wallhelper-git` to the AUR as a new pkgbase, then file a deletion
+      request for `paperboy-git`. Zero votes, so deletion rather than a merge —
+      a merge would carry the misleading name into the new package's history.
+- [ ] Reply to m040601 on the `paperboy-git` page saying where it went.
+- [ ] dotfiles: `packages/arch/97-apps.txt` still lists `paperboy-git`, and the
+      units are still `paperboy-fetch.service`/`.timer`. Renaming the units
+      wants `disable --now` on the old pair before `enable --now` on the new,
+      or the old timer keeps firing a binary that no longer exists.
+- [ ] Local state: `/tmp/wallhelper-migrate.sh` moves `~/.config/paperboy`,
+      `~/.cache/paperboy` and `~/.local/state/paperboy` to their new homes.
+      Run it before the first `wallhelper fetch`, or the settings panel opens
+      on defaults and the guide replays.
+- [ ] `paru --gendb` after the reinstall, so the devel record points at the new
+      pkgbase instead of the deleted one.
 
 ## Next — the window
 
@@ -43,12 +58,13 @@
 
 ## Watch for
 
-- The units were switched from `wallpaper-fetch` to `paperboy-fetch` by hand,
-  not by `make sync`. `systemctl --user enable` alone leaves a timer *enabled
-  but dead* until the next login; it wants `enable --now`, or `start` after
-  the fact. `make status` does check `is-active`, so it would have caught this
-  — nobody ran it.
-- `make status` now also reports whether the installed `paperboy-git` matches
+- The units have been renamed by hand twice now (`wallpaper-fetch` ->
+  `paperboy-fetch`, and `-> wallhelper-fetch` still pending), never by
+  `make sync`. `systemctl --user enable` alone leaves a timer *enabled but
+  dead* until the next login; it wants `enable --now`, or `start` after the
+  fact. `make status` does check `is-active`, so it would have caught this —
+  nobody ran it. Third time: `disable --now` the old pair first.
+- `make status` now also reports whether the installed `wallhelper-git` matches
   this repo's HEAD. It reports; it does not rebuild.
 
 ## Known and deliberate
@@ -57,7 +73,7 @@
   memory.
 - No logging beyond stderr and the journal. reel writes rotating JSONL because
   a GUI misbehaving mid-session needs a trace; a once-a-day timer already has
-  one, in `journalctl --user -u paperboy-fetch`.
+  one, in `journalctl --user -u wallhelper-fetch`.
 - The config file only ever stores your deltas. A full copy would pin every
   shipped source at whatever it looked like the day you first touched a switch,
   which is exactly the bug that shipped two wrong source links.

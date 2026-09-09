@@ -41,9 +41,9 @@ from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
 
 class Window(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title="Paperboy")
+        super().__init__(application=app, title="Wallhelper")
         self.set_default_size(1120, 760)
-        self.add_css_class("paperboy")
+        self.add_css_class("wallhelper")
         self.current: Path | None = None
         self.files: list[Path] = []
         self.kept = False

@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Plain token on purpose: wallhaven's WAF 403s any User-Agent carrying a
 # parenthesized URL, which silently kills that source.
-UA = "paperboy/1.0"
+UA = "wallhelper/1.0"
 
 
 def fetch_url(url: str, timeout: int = 30,

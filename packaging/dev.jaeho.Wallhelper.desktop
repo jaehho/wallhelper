@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=Paperboy
+Name=Wallhelper
 GenericName=Wallpaper
 Comment=One new photograph a day, and the ones you kept
-Exec=paperboy gui
+Exec=wallhelper gui
 Icon=image-x-generic
 Terminal=false
 Categories=Graphics;Photography;Utility;
 Keywords=wallpaper;background;photo;desktop;
 StartupNotify=true
-StartupWMClass=dev.jaeho.Paperboy
+StartupWMClass=dev.jaeho.Wallhelper

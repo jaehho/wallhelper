@@ -2,8 +2,8 @@
 
 import unittest
 
-from paperboy.sources import dig, fill
 from tests import guard
+from wallhelper.sources import dig, fill
 
 
 def setUpModule():

@@ -22,7 +22,7 @@ in one glance.
 
 ## Product Purpose
 
-paperboy fetches one photograph a day from a source you chose, sets it as the
+wallhelper fetches one photograph a day from a source you chose, sets it as the
 wallpaper, and remembers who took it. Photographs you keep go into a permanent
 collection; photographs you don't are deleted when the next one arrives.
 
@@ -53,7 +53,7 @@ feeling of a good print you walk past every day and still notice.
 
 - **Wallpaper managers (waypaper, variety, Wallpaper Engine):** a folder
   browser with a thumbnail grid, a settings dialog of checkboxes, and the
-  premise that choosing wallpapers is the activity. paperboy is not a picker.
+  premise that choosing wallpapers is the activity. wallhelper is not a picker.
   Choosing is what it does *for* you; the strip along the bottom is a record of
   what you kept, not a gallery to shop in.
 - **Consumer photo app / social feed:** no hearts, no counts, no streaks, no

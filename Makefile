@@ -1,4 +1,4 @@
-# paperboy - one new photograph a day, and the ones you kept.
+# wallhelper - one new photograph a day, and the ones you kept.
 
 .PHONY: help test lint run install uninstall package clean
 
@@ -10,16 +10,16 @@ test:            ## run the test suite
 	python -m unittest discover -s tests -t . -v
 
 lint:            ## ruff
-	ruff check paperboy tests
+	ruff check wallhelper tests
 
 run:             ## the window, from the source tree
-	python -m paperboy.cli gui
+	python -m wallhelper.cli gui
 
 install:         ## build and install the Arch package (asks for sudo)
 	cd packaging && makepkg -si --noconfirm
 
 uninstall:       ## remove the Arch package
-	sudo pacman -Rns paperboy-git
+	sudo pacman -Rns wallhelper-git
 
 package:         ## build the Arch package without installing
 	cd packaging && makepkg -f

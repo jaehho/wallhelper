@@ -1,13 +1,13 @@
 # Maintainer: Jaeho Cho <jaeho2025@gmail.com>
-pkgname=paperboy-git
-_pkgname=paperboy
+pkgname=wallhelper-git
+_pkgname=wallhelper
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="One new photograph a day, and the ones you kept"
 arch=('any')
-url="https://github.com/jaehho/paperboy"
+url="https://github.com/jaehho/wallhelper"
 license=('MIT')
-# python-gobject, gtk4 and libadwaita are only needed by `paperboy gui`; the
+# python-gobject, gtk4 and libadwaita are only needed by `wallhelper gui`; the
 # fetch that runs from a systemd timer uses nothing but the standard library.
 depends=('python' 'python-gobject' 'gtk4' 'libadwaita')
 optdepends=('hyprpaper: setting the wallpaper under Hyprland'
@@ -15,8 +15,6 @@ optdepends=('hyprpaper: setting the wallpaper under Hyprland'
             'xdg-desktop-portal: opening source pages and signup pages')
 makedepends=('git' 'python-build' 'python-installer' 'python-setuptools'
              'python-wheel')
-provides=("$_pkgname")
-conflicts=("$_pkgname")
 source=("git+$url.git")
 sha256sums=('SKIP')
 
@@ -47,8 +45,8 @@ check() {
 package() {
 	cd "$_pkgname"
 	python -m installer --destdir="$pkgdir" dist/*.whl
-	install -Dm644 packaging/dev.jaeho.Paperboy.desktop \
-		"$pkgdir/usr/share/applications/dev.jaeho.Paperboy.desktop"
+	install -Dm644 packaging/dev.jaeho.Wallhelper.desktop \
+		"$pkgdir/usr/share/applications/dev.jaeho.Wallhelper.desktop"
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$_pkgname/README.md"
 	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

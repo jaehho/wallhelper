@@ -1,4 +1,4 @@
-"""The commands. One per thing you can ask paperboy to do."""
+"""The commands. One per thing you can ask wallhelper to do."""
 
 from __future__ import annotations
 
@@ -36,13 +36,14 @@ def cmd_fetch(args) -> int:
     # -- which almost always succeeds -- and stacks up a second image.
     today = time.strftime("%Y%m%d")
     if not args.next and list(DIR.glob(f"{today}-*")):
-        print("paperboy: already have today's photo (--next to pull another)")
+        print("wallhelper: already have today's photo"
+              " (--next to pull another)")
         return 0
 
     usable = enabled()
     if not usable:
-        notify("Paperboy", "no usable source is switched on", urgent=True)
-        print("paperboy: no usable source is switched on", file=sys.stderr)
+        notify("Wallhelper", "no usable source is switched on", urgent=True)
+        print("wallhelper: no usable source is switched on", file=sys.stderr)
         return 1
 
     # A user timer cannot reliably order itself after the network is up:
@@ -54,13 +55,13 @@ def cmd_fetch(args) -> int:
     new = None
     for delay in (0, *((30, 60, 120, 240) if args.wait else ())):
         if delay:
-            print(f"paperboy: no source answered; retrying in {delay}s",
+            print(f"wallhelper: no source answered; retrying in {delay}s",
                   file=sys.stderr)
             time.sleep(delay)
         for name in usable:
             new = fetch_source(name, config()[name])
             if new:
-                print(f"paperboy: {name} -> {new.name}")
+                print(f"wallhelper: {name} -> {new.name}")
                 break
         if new:
             break
@@ -71,17 +72,17 @@ def cmd_fetch(args) -> int:
         # broken from April to September. A toast on every flaky-wifi failure
         # would train you to ignore it, so only an empty pool escalates.
         if not images(DIR):
-            notify("Paperboy", "every source failed and none are on disk",
+            notify("Wallhelper", "every source failed and none are on disk",
                    urgent=True)
-            print("paperboy: every source failed and none are on disk",
+            print("wallhelper: every source failed and none are on disk",
                   file=sys.stderr)
             return 1
-        print("paperboy: every source failed; keeping what's on disk",
+        print("wallhelper: every source failed; keeping what's on disk",
               file=sys.stderr)
         return 1
 
     for name in sweep(spare=new):
-        print(f"paperboy: deleted {name} (not kept)")
+        print(f"wallhelper: deleted {name} (not kept)")
 
     set_wallpaper(new)
     return 0
@@ -90,7 +91,7 @@ def cmd_fetch(args) -> int:
 def cmd_set(args) -> int:
     path = Path(args.image).expanduser()
     if not path.is_file():
-        print(f"paperboy: no such image: {args.image}", file=sys.stderr)
+        print(f"wallhelper: no such image: {args.image}", file=sys.stderr)
         return 1
     set_wallpaper(path)
     return 0
@@ -100,7 +101,7 @@ def cmd_keep(args) -> int:
     path = current_image()
     if path is None:
         notify("Nothing to keep", "no active wallpaper")
-        print("paperboy: no active wallpaper", file=sys.stderr)
+        print("wallhelper: no active wallpaper", file=sys.stderr)
         return 1
 
     KEPT.mkdir(parents=True, exist_ok=True)
@@ -117,7 +118,7 @@ def cmd_keep(args) -> int:
             # one, and unlinking would destroy the photo outright.
             if target.stat().st_nlink == 1:
                 notify("Can't stop keeping this", "it is the only copy left")
-                print("paperboy: this is the only copy left; "
+                print("wallhelper: this is the only copy left; "
                       "delete it by hand if you really mean to",
                       file=sys.stderr)
                 return 1
@@ -151,7 +152,7 @@ def cmd_delete(args) -> int:
     """Remove the photo on screen for good, and move on to the next one."""
     path = current_image()
     if path is None:
-        print("paperboy: no active wallpaper", file=sys.stderr)
+        print("wallhelper: no active wallpaper", file=sys.stderr)
         return 1
 
     info = label(path)
@@ -172,7 +173,7 @@ def cmd_delete(args) -> int:
             ok = False
     if not ok:
         notify("Couldn't delete", path.name)
-        print(f"paperboy: couldn't delete {path.name}", file=sys.stderr)
+        print(f"wallhelper: couldn't delete {path.name}", file=sys.stderr)
         return 1
 
     forget([path.name])
@@ -186,7 +187,7 @@ def cmd_delete(args) -> int:
 def cmd_info(args) -> int:
     info = label(current_image())
     if not info:
-        print("paperboy: no active wallpaper", file=sys.stderr)
+        print("wallhelper: no active wallpaper", file=sys.stderr)
         return 1
     for key in ("file", "title", "place", "date", "source", "author",
                 "url", "kept"):
@@ -202,7 +203,7 @@ def cmd_info(args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        prog="paperboy",
+        prog="wallhelper",
         description="One new photograph a day, and the ones you kept.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -232,7 +233,7 @@ def main() -> int:
 
     p = sub.add_parser("gui", help="the same thing with pictures")
     p.set_defaults(func=lambda args: __import__(
-        "paperboy.gui", fromlist=["cmd_gui"]).cmd_gui(args))
+        "wallhelper.gui", fromlist=["cmd_gui"]).cmd_gui(args))
 
     args = parser.parse_args()
     migrate()

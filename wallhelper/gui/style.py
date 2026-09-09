@@ -45,7 +45,7 @@ def stylesheet(C: dict[str, str]) -> str:
     mono labels, hairlines, words rather than switches. A stock GNOME
     preferences page in here would read as a different application."""
     return f"""
-    window.paperboy {{ background: {C['crust']}; }}
+    window.wallhelper {{ background: {C['crust']}; }}
 
     /* Scrim: transparent over the top of the photograph, opaque under the
        plate. Ends just short of solid so the image still shows through. */

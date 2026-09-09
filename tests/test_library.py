@@ -4,9 +4,9 @@ import struct
 import unittest
 import zlib
 
-from paperboy import library
-from paperboy.paths import CREDITS, DIR, KEPT
 from tests import guard
+from wallhelper import library
+from wallhelper.paths import CREDITS, DIR, KEPT
 
 
 def setUpModule():

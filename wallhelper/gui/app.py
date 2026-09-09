@@ -12,7 +12,7 @@ from .window import Window  # noqa: E402
 
 class App(Adw.Application):
     def __init__(self):
-        super().__init__(application_id="dev.jaeho.Paperboy")
+        super().__init__(application_id="dev.jaeho.Wallhelper")
 
     def do_activate(self):
         (self.props.active_window or Window(self)).present()

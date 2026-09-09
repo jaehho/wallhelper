@@ -1,21 +1,21 @@
 # Packaging
 
-AUR package `paperboy-git` — builds from `main` and installs `/usr/bin/paperboy`
+AUR package `wallhelper-git` — builds from `main` and installs `/usr/bin/wallhelper`
 plus a `.desktop` launcher entry.
 
 Files:
 
 - `PKGBUILD` — the AUR recipe (VCS `-git` package, no release tags needed).
 - `.SRCINFO` — generated metadata the AUR requires (`makepkg --printsrcinfo`).
-- `dev.jaeho.Paperboy.desktop` — launcher entry.
+- `dev.jaeho.Wallhelper.desktop` — launcher entry.
 
 ## Test the build locally (no AUR, no GitHub)
 
 ```fish
-cd /tmp; rm -rf paperboy-pkgtest; mkdir paperboy-pkgtest; cd paperboy-pkgtest
-cp ~/projects/paperboy/packaging/PKGBUILD .
+cd /tmp; rm -rf wallhelper-pkgtest; mkdir wallhelper-pkgtest; cd wallhelper-pkgtest
+cp ~/projects/wallhelper/packaging/PKGBUILD .
 # temporarily build from the local repo instead of GitHub:
-sed -i 's#git+https://github.com/jaehho/paperboy.git#git+file:///home/jaeho/projects/paperboy#' PKGBUILD
+sed -i 's#git+https://github.com/jaehho/wallhelper.git#git+file:///home/jaeho/projects/wallhelper#' PKGBUILD
 makepkg -f            # build; add -si to also install
 ```
 
@@ -29,11 +29,11 @@ than on the next daily fetch.
 3. Clone the (empty) AUR repo and push:
 
    ```fish
-   git clone ssh://aur@aur.archlinux.org/paperboy-git.git aur-paperboy
-   cp PKGBUILD .SRCINFO aur-paperboy/     # the .desktop ships in the source
-   cd aur-paperboy; git branch -m master  # the AUR rejects a push to main
+   git clone ssh://aur@aur.archlinux.org/wallhelper-git.git aur-wallhelper
+   cp PKGBUILD .SRCINFO aur-wallhelper/     # the .desktop ships in the source
+   cd aur-wallhelper; git branch -m master  # the AUR rejects a push to main
    git add -A
-   git commit -m "Initial import: paperboy-git"
+   git commit -m "Initial import: wallhelper-git"
    git push
    ```
 

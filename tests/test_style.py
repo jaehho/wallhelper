@@ -3,8 +3,8 @@
 import unittest
 from unittest import mock
 
-from paperboy.gui import style
 from tests import guard
+from wallhelper.gui import style
 
 
 def setUpModule():
@@ -45,7 +45,7 @@ class Stylesheet(unittest.TestCase):
         # name palette() does not define raises KeyError here, rather than at
         # the moment the window would have opened.
         css = style.stylesheet(style.palette())
-        self.assertIn("window.paperboy", css)
+        self.assertIn("window.wallhelper", css)
         self.assertNotIn("{C[", css)
 
     def test_a_short_palette_is_an_error_and_not_a_blank_window(self):

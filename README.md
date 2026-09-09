@@ -1,4 +1,4 @@
-# paperboy
+# wallhelper
 
 One new photograph a day, and the ones you kept.
 
@@ -12,7 +12,7 @@ Built for Hyprland and hyprpaper. The window is GTK4 and libadwaita.
 ## Install
 
 ```sh
-paru -S paperboy-git
+paru -S wallhelper-git
 ```
 
 Or from a checkout: `make install`. See `packaging/` for the recipe and the
@@ -21,12 +21,12 @@ AUR workflow.
 ## Use
 
 ```
-paperboy fetch [--next]    pull the day's photo (what the systemd timer runs)
-paperboy set <image>       make an image the wallpaper
-paperboy keep [--undo]     keep what's on screen
-paperboy delete            remove what's on screen for good
-paperboy info              what's on screen and where it came from
-paperboy gui               the same thing with pictures
+wallhelper fetch [--next]    pull the day's photo (what the systemd timer runs)
+wallhelper set <image>       make an image the wallpaper
+wallhelper keep [--undo]     keep what's on screen
+wallhelper delete            remove what's on screen for good
+wallhelper info              what's on screen and where it came from
+wallhelper gui               the same thing with pictures
 ```
 
 In the window: `H`/`L` walk the strip, `K` keeps the photograph (and deletes it
@@ -78,7 +78,7 @@ A source needing an API key declares where to get one, and the panel then offers
 the signup link and a box to paste into; the key goes wherever the placeholder
 appears, whether that is a query argument or a header.
 
-Your changes live in `~/.config/paperboy/config.json`, and only your changes —
+Your changes live in `~/.config/wallhelper/config.json`, and only your changes —
 the shipped sources stay shipped, so they keep improving.
 
 ## How it fits together
@@ -107,5 +107,5 @@ Modules: `paths` (every path, importing nothing), `config` (the shipped sources
 and your deltas), `net`, `desktop` (notifications, hyprctl, hyprpaper),
 `library` (the collection on disk), `sources` (the template engine), `cli`, and
 `gui/` (`style`, `thumbs`, `sheets`, `settings`, `window`, `app`). Importing
-`paperboy.gui` is what pulls in GTK, which is why the CLI does it inside the
+`wallhelper.gui` is what pulls in GTK, which is why the CLI does it inside the
 `gui` subcommand and nowhere else.

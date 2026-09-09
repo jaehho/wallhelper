@@ -3,9 +3,9 @@
 import json
 import unittest
 
-from paperboy import config as cfg
-from paperboy.paths import CONFIG
 from tests import guard
+from wallhelper import config as cfg
+from wallhelper.paths import CONFIG
 
 
 def setUpModule():
