@@ -1,4 +1,4 @@
-# wallhelper devlog
+# wallhelper design log
 
 What was done and why, and the choices that are deliberate. Open work lives in GitHub issues.
 
