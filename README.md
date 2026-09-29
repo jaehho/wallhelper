@@ -99,8 +99,9 @@ make run      # the window, straight from the source tree
 make install  # build and install the Arch package
 ```
 
-`PRODUCT.md` is what this is and what it must never become; `DESIGN_LOG.md` is what
-was done and why, and GitHub issues hold what is open. The tests delete files, so run them through `make test` — anything
+`PRODUCT.md` is what this is and what it must never become. GitHub issues hold
+what is open, plus what was done and why (label `decision`) and known traps
+(label `gotcha`). The tests delete files, so run them through `make test` — anything
 else and a guard stops them before they touch a real collection.
 
 Modules: `paths` (every path, importing nothing), `config` (the shipped sources
