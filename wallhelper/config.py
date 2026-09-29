@@ -8,6 +8,7 @@ deltas are JSON, and a missing or corrupt file just means defaults.
 
 from __future__ import annotations
 
+import contextlib
 import json
 
 from .paths import CONFIG, KEPT, LEGACY_KEPT
@@ -174,19 +175,15 @@ def migrate() -> None:
     """liked/ was the old name for kept/, and an older config held a full copy
     of every shipped source rather than your changes to them."""
     if LEGACY_KEPT.is_dir() and not KEPT.exists():
-        try:
+        with contextlib.suppress(OSError):
             LEGACY_KEPT.rename(KEPT)
-        except OSError:
-            pass
     try:
         stored = json.loads(CONFIG.read_text())
     except (OSError, json.JSONDecodeError, ValueError):
         return
     if isinstance(stored, dict) and trim(stored) != stored:
-        try:
+        with contextlib.suppress(OSError):
             save_config(config())
-        except OSError:
-            pass
 
 
 def needs_setup(spec: dict) -> str:

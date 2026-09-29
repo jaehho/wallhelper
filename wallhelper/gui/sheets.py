@@ -98,13 +98,12 @@ def guide_sheet(pointer, on_close):
     dismiss.connect("pressed", lambda *_a: on_close())
     backdrop.add_controller(dismiss)
 
-    panel = Gtk.Revealer(
+    return Gtk.Revealer(
         transition_type=Gtk.RevealerTransitionType.CROSSFADE,
         transition_duration=200, hexpand=True, vexpand=True,
         halign=Gtk.Align.FILL, valign=Gtk.Align.FILL,
         reveal_child=False, child=backdrop, can_target=False,
     )
-    return panel
 
 
 def shortcuts_sheet(on_close):
@@ -138,10 +137,9 @@ def shortcuts_sheet(on_close):
     # its child -- so while hidden it still sat on top of the window
     # swallowing every click. Keys were unaffected, which is why this
     # looked like a settings bug rather than a dead window.
-    panel = Gtk.Revealer(
+    return Gtk.Revealer(
         transition_type=Gtk.RevealerTransitionType.CROSSFADE,
         transition_duration=160, hexpand=True, vexpand=True,
         halign=Gtk.Align.FILL, valign=Gtk.Align.FILL,
         reveal_child=False, child=backdrop, can_target=False,
     )
-    return panel
