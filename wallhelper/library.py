@@ -58,15 +58,25 @@ def trash(path: Path) -> bool:
     try:
         done = subprocess.run(["gio", "trash", str(path)],
                               capture_output=True, timeout=15, check=False)
-        if done.returncode == 0:
-            return True
     except (OSError, subprocess.SubprocessError):
         pass
+    else:
+        if done.returncode == 0:
+            return True
     try:
         path.unlink()              # no gio, no trash -- still honour the ask
-        return True
     except OSError:
         return False
+    return True
+
+
+# JPEG markers: SOF0-SOF15 carry the frame size; DHT/JPG/DAC sit among them.
+_JPEG_MARKER_PREFIX = 0xFF
+_JPEG_MARKER_LEN = 2
+_JPEG_SOF_LO = 0xC0
+_JPEG_SOF_HI = 0xCF
+_JPEG_SOF_SKIP = (0xC4, 0xC8, 0xCC)
+_YYYYMMDD_LEN = 8
 
 
 # --- credits --------------------------------------------------------------
@@ -78,7 +88,7 @@ def credits() -> dict[str, tuple[str, str, str]]:
         for line in CREDITS.read_text().splitlines():
             parts = line.split("\t")
             if parts and parts[0]:
-                out[parts[0]] = tuple((parts + ["", "", ""])[1:4])  # type: ignore[assignment]
+                out[parts[0]] = tuple(([*parts, "", "", ""])[1:4])  # type: ignore[assignment]
     except OSError:
         pass
     return out
@@ -138,7 +148,7 @@ def stamp(name: str) -> tuple[str, str]:
     """
     parts = Path(name).stem.split("-")
     date = ""
-    if parts and len(parts[0]) == 8 and parts[0].isdigit():
+    if parts and len(parts[0]) == _YYYYMMDD_LEN and parts[0].isdigit():
         first = parts[0]
         date = f"{first[:4]}·{first[4:6]}·{first[6:8]}"
     else:
@@ -204,12 +214,11 @@ def measure(path: Path) -> tuple[int, int] | None:
             handle.seek(2)
             while True:
                 marker = handle.read(2)
-                if len(marker) < 2 or marker[0] != 0xFF:
+                if len(marker) < _JPEG_MARKER_LEN or marker[0] != _JPEG_MARKER_PREFIX:
                     return None
                 length = struct.unpack(">H", handle.read(2))[0]
-                # SOF0-SOF15 carry the frame size; DHT/JPG/DAC sit among them.
-                if (0xC0 <= marker[1] <= 0xCF
-                        and marker[1] not in (0xC4, 0xC8, 0xCC)):
+                if (_JPEG_SOF_LO <= marker[1] <= _JPEG_SOF_HI
+                        and marker[1] not in _JPEG_SOF_SKIP):
                     height, width = struct.unpack(">HH", handle.read(5)[1:5])
                     return int(width), int(height)
                 handle.seek(length - 2, 1)

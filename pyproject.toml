@@ -31,5 +31,19 @@ include = ["wallhelper*"]
 line-length = 79
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B"]
-ignore = ["B008"]
+select = [
+  "E", "W", "F", "I", "N", "UP", "B", "C4",
+  "SIM", "RUF", "PERF", "PIE", "RET", "RSE",
+  "ARG", "PTH", "FLY", "PL", "TRY", "T20", "T10",
+]
+ignore = [
+  "E501",
+  "COM812", "COM819", "ISC001",
+  "S101",
+  # FastAPI Depends() default pattern
+  "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI entry: print is the interface
+"wallhelper/cli.py" = ["T201", "T203"]

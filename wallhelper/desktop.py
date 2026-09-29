@@ -7,6 +7,7 @@ does off the main thread.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import time
@@ -16,14 +17,12 @@ from pathlib import Path
 
 
 def notify(summary: str, body: str = "", urgent: bool = False) -> None:
-    try:
+    with contextlib.suppress(OSError):
         subprocess.run(
             ["notify-send", "-a", "Wallpaper",
              "-u", "critical" if urgent else "low", summary, body],
             check=False, capture_output=True,
         )
-    except OSError:
-        pass
 
 
 def hyprctl(*args: str) -> str:
@@ -32,28 +31,28 @@ def hyprctl(*args: str) -> str:
             ["hyprctl", *args], capture_output=True, text=True, timeout=10,
             check=False,
         )
-        return out.stdout if out.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):
         return ""
+    return out.stdout if out.returncode == 0 else ""
 
 
-_MONITORS: tuple[float, list[str]] = (0.0, [])
+_MONITOR_CACHE_TTL_S = 5.0
+_MONITORS: list[tuple[float, list[str]]] = [(0.0, [])]
 
 
 def monitors() -> list[str]:
     """Cached briefly. Every hyprctl call is a process spawn, and setting a
     wallpaper asks for this list each time -- which made holding an arrow key
     down spawn a process per frame. Short enough that a hotplug still lands."""
-    global _MONITORS
-    when, names = _MONITORS
-    if names and time.monotonic() - when < 5:
+    when, names = _MONITORS[0]
+    if names and time.monotonic() - when < _MONITOR_CACHE_TTL_S:
         return names
     try:
         names = [m["name"]
                  for m in json.loads(hyprctl("monitors", "-j") or "[]")]
     except (json.JSONDecodeError, KeyError, TypeError):
         names = []
-    _MONITORS = (time.monotonic(), names)
+    _MONITORS[0] = (time.monotonic(), names)
     return names
 
 

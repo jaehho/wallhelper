@@ -18,7 +18,7 @@ class App(Adw.Application):
         (self.props.active_window or Window(self)).present()
 
 
-def cmd_gui(args) -> int:
+def cmd_gui(_args) -> int:
     """Importing this package pulls in GTK, libadwaita and a display
     connection, which is why the CLI imports it inside the gui subcommand and
     nowhere else: fetch and set run from a timer and a keybind.

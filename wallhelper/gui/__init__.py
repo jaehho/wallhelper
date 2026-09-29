@@ -27,6 +27,8 @@ def __getattr__(name):
     style.palette in the tests, say -- does not drag in libadwaita, a window
     class and a display connection to do it."""
     if name == "cmd_gui":
-        from .app import cmd_gui
+        # late import: pull libadwaita only when the GUI entry point is asked for
+        from .app import cmd_gui  # noqa: PLC0415
         return cmd_gui
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)

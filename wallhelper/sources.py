@@ -8,6 +8,7 @@ window can offer to test it.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import random
 import re
@@ -19,6 +20,9 @@ from pathlib import Path
 from .library import measure, remember, slugify
 from .net import download, fetch_url
 from .paths import DIR
+
+_REPLACE_PAIR_LEN = 2
+_YYYYMMDD_LEN = 8
 
 
 def dig(data, path: str):
@@ -67,8 +71,8 @@ def fill(template, data) -> str:
         else:
             found = dig(data, key)
             text = "" if found is None else str(found)
-        for step in filters:
-            step = step.strip()
+        for raw in filters:
+            step = raw.strip()
             if step == "name":       # after the last / or :
                 text = re.split(r"[/:]", text)[-1]
             elif step == "stem":     # without the extension
@@ -78,7 +82,7 @@ def fill(template, data) -> str:
     return TOKEN.sub(one, str(template)).strip()
 
 
-def fetch_source(name: str, spec: dict) -> Path | None:
+def fetch_source(name: str, spec: dict) -> Path | None:  # noqa: PLR0912 — one entry per config key
     """Run one source described entirely by config.
 
     Every source is data now: fetch a JSON document, optionally pick an entry
@@ -125,11 +129,9 @@ def fetch_source(name: str, spec: dict) -> Path | None:
         if not src:
             continue
         swap = spec.get("replace")
-        if isinstance(swap, (list, tuple)) and len(swap) == 2:
-            try:
+        if isinstance(swap, (list, tuple)) and len(swap) == _REPLACE_PAIR_LEN:
+            with contextlib.suppress(re.error):
                 src = re.sub(str(swap[0]), str(swap[1]), src)
-            except re.error:
-                pass
 
         title = fill(spec.get("title"), entry)
         # Try each in turn rather than taking the first non-empty one: a title
@@ -145,7 +147,7 @@ def fetch_source(name: str, spec: dict) -> Path | None:
         # The prefix has to be eight digits or stamp() cannot read it back,
         # and APIs hand out dates in every punctuation they can think of.
         day = re.sub(r"\D", "", fill(spec.get("date"), entry))
-        if len(day) != 8:
+        if len(day) != _YYYYMMDD_LEN:
             day = time.strftime("%Y%m%d")
         suffix = Path(urllib.parse.urlparse(src).path).suffix or ".jpg"
         out = DIR / f"{day}-{name}-{ident}{suffix}"
@@ -165,7 +167,7 @@ def fetch_source(name: str, spec: dict) -> Path | None:
     return None
 
 
-def probe_source(name: str, spec: dict) -> tuple[bool, str]:
+def probe_source(_name: str, spec: dict) -> tuple[bool, str]:  # noqa: PLR0911 — one return per failure
     """Ask a source what it has today, without downloading it.
 
     Answers (worked, one line you can read). A source can fail in a dozen

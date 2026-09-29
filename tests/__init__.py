@@ -13,18 +13,20 @@ collection it deletes yours.
 
 import os
 import tempfile
+from pathlib import Path
 
-_ROOT = tempfile.mkdtemp(prefix="wallhelper-test-")
-os.environ["WALLHELPER_DIR"] = os.path.join(_ROOT, "photos")
-os.environ["WALLHELPER_CONFIG"] = os.path.join(_ROOT, "config.json")
-os.environ["XDG_CACHE_HOME"] = os.path.join(_ROOT, "cache")
-os.environ["XDG_STATE_HOME"] = os.path.join(_ROOT, "state")
+_ROOT = Path(tempfile.mkdtemp(prefix="wallhelper-test-"))
+os.environ["WALLHELPER_DIR"] = str(_ROOT / "photos")
+os.environ["WALLHELPER_CONFIG"] = str(_ROOT / "config.json")
+os.environ["XDG_CACHE_HOME"] = str(_ROOT / "cache")
+os.environ["XDG_STATE_HOME"] = str(_ROOT / "state")
 
 
 def guard():
     """Refuse to run against anything but the scratch collection."""
-    from wallhelper.paths import DIR
+    # late import: paths.py reads the env vars set above
+    from wallhelper.paths import DIR  # noqa: PLC0415
+
     if "wallhelper-test-" not in str(DIR):
-        raise RuntimeError(
-            f"the tests are pointed at {DIR}, which is a real collection. "
-            f"Run them with `make test`.")
+        msg = f"the tests are pointed at {DIR}, which is a real collection. Run them with `make test`."
+        raise RuntimeError(msg)

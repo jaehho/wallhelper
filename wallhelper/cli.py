@@ -148,7 +148,7 @@ def cmd_keep(args) -> int:
     return 0
 
 
-def cmd_delete(args) -> int:
+def cmd_delete(_args) -> int:
     """Remove the photo on screen for good, and move on to the next one."""
     path = current_image()
     if path is None:

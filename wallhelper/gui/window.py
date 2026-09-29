@@ -40,7 +40,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
 
 
 class Window(Adw.ApplicationWindow):
-    def __init__(self, app):
+    def __init__(self, app):  # noqa: PLR0915 — GTK widget tree, one constructor
         super().__init__(application=app, title="Wallhelper")
         self.set_default_size(1120, 760)
         self.add_css_class("wallhelper")
@@ -528,7 +528,7 @@ class Window(Adw.ApplicationWindow):
     def toast(self, text):
         self.toasts.add_toast(Adw.Toast(title=text, timeout=2))
 
-    def on_key(self, _controller, keyval, _code, _state):
+    def on_key(self, _controller, keyval, _code, _state):  # noqa: PLR0911 — early returns for each failure mode
         # BUBBLE phase, so a focused entry has already had its go at the
         # key -- but settings has text fields, and a stray 'n' there must
         # type an n, not fetch a new photo. Belt and braces.

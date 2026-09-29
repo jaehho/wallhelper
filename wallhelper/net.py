@@ -36,9 +36,10 @@ def download(url: str, dest: Path) -> bool:
         if data[:2] not in (b"\xff\xd8", b"\x89P", b"RI", b"BM"):
             return False
         tmp.chmod(0o644)           # mktemp-style 0600 would be odd here
-        tmp.replace(dest)
-        return True
     except (urllib.error.URLError, OSError, TimeoutError):
         return False
+    else:
+        tmp.replace(dest)
+        return True
     finally:
         tmp.unlink(missing_ok=True)

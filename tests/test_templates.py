@@ -1,5 +1,6 @@
 """The template language a source is written in."""
 
+import time
 import unittest
 
 from tests import guard
@@ -49,7 +50,6 @@ class Fill(unittest.TestCase):
         self.assertEqual(fill("[{nope}]", REPLY), "[]")
 
     def test_date_comes_from_the_clock(self):
-        import time
         self.assertEqual(fill("{date:%Y}", {}), time.strftime("%Y"))
 
     def test_name_and_stem_filters(self):
