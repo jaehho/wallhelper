@@ -42,6 +42,7 @@ def save(_url, out: Path) -> bool:
 
 class Source(unittest.TestCase):
     def setUp(self):
+        DIR.mkdir(parents=True, exist_ok=True)
         for path in DIR.glob("*.*"):
             path.unlink()
         CREDITS.unlink(missing_ok=True)
