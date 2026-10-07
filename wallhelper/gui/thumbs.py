@@ -75,8 +75,10 @@ def dimensions(path: Path) -> str:
     size = measure(path)
     if size is None:
         try:
+            # An unrecognized file answers (-1, -1), not (0, 0): the
+            # dimension caption would read '-1 \u00d7 -1' over a broken photo.
             _fmt, width, height = GdkPixbuf.Pixbuf.get_file_info(str(path))
-            size = (width, height) if width and height else None
+            size = (width, height) if width > 0 and height > 0 else None
         except (GLib.Error, TypeError, ValueError):
             size = None
     return f"{size[0]} \u00d7 {size[1]}" if size else ""
