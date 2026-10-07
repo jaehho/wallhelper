@@ -82,7 +82,37 @@ def fill(template, data) -> str:
     return TOKEN.sub(one, str(template)).strip()
 
 
-def fetch_source(name: str, spec: dict) -> Path | None:  # noqa: PLR0912 — one entry per config key
+def _resolve(spec: dict, timeout: int = 30) -> tuple[list | None, str]:
+    """The one resolution path both the probe and the fetch walk: validate
+    the spec, fetch the JSON document, dig the list out of it.
+
+    Answers (entries, complaint). Entries is None when the source cannot be
+    resolved, and the complaint is the line the CHECK button shows -- a
+    fetch ignores it and just tries the next source.
+    """
+    if not isinstance(spec, dict) or not spec.get("image"):
+        return None, "no image template"
+
+    document: object = {}
+    url = fill(spec.get("url"), {})
+    if url:
+        try:
+            document = json.loads(fetch_url(url, timeout=timeout,
+                                            headers=spec.get("headers")))
+        except (urllib.error.URLError, OSError, TimeoutError) as problem:
+            return None, str(getattr(problem, "reason", problem))[:70]
+        except (json.JSONDecodeError, ValueError):
+            return None, "the reply is not JSON"
+
+    if spec.get("list"):
+        found = dig(document, spec["list"])
+        if not isinstance(found, list) or not found:
+            return None, f"nothing to pick from at {spec['list']}"
+        return found, ""
+    return [document], ""
+
+
+def fetch_source(name: str, spec: dict) -> Path | None:
     """Run one source described entirely by config.
 
     Every source is data now: fetch a JSON document, optionally pick an entry
@@ -90,24 +120,9 @@ def fetch_source(name: str, spec: dict) -> Path | None:  # noqa: PLR0912 — one
     That covers the five shipped ones and, more to the point, the next one --
     adding a source is writing an object, not editing this file.
     """
-    if not isinstance(spec, dict) or not spec.get("image"):
+    entries, _complaint = _resolve(spec)
+    if entries is None:
         return None
-
-    document = {}
-    url = fill(spec.get("url"), {})
-    if url:
-        try:
-            document = json.loads(fetch_url(url, headers=spec.get("headers")))
-        except (urllib.error.URLError, OSError, TimeoutError,
-                json.JSONDecodeError, ValueError):
-            return None
-
-    entries = [document]
-    if spec.get("list"):
-        found = dig(document, spec["list"])
-        if not isinstance(found, list) or not found:
-            return None
-        entries = found
 
     demands = spec.get("require")
     demands = demands if isinstance(demands, dict) else {}
@@ -167,33 +182,20 @@ def fetch_source(name: str, spec: dict) -> Path | None:  # noqa: PLR0912 — one
     return None
 
 
-def probe_source(_name: str, spec: dict) -> tuple[bool, str]:  # noqa: PLR0911 — one return per failure
+def probe_source(_name: str, spec: dict) -> tuple[bool, str]:
     """Ask a source what it has today, without downloading it.
 
     Answers (worked, one line you can read). A source can fail in a dozen
     quiet ways -- an expired key, a moved JSON path, a day with a video
     instead of a photograph -- and all of them look identical from outside:
     the wallpaper just doesn't change. This makes them say so.
-    """
-    if not isinstance(spec, dict) or not spec.get("image"):
-        return False, "no image template"
-    document = {}
-    url = fill(spec.get("url"), {})
-    if url:
-        try:
-            document = json.loads(fetch_url(url, timeout=20,
-                                            headers=spec.get("headers")))
-        except (urllib.error.URLError, OSError, TimeoutError) as problem:
-            return False, str(getattr(problem, "reason", problem))[:70]
-        except (json.JSONDecodeError, ValueError):
-            return False, "the reply is not JSON"
 
-    entries = [document]
-    if spec.get("list"):
-        found = dig(document, spec["list"])
-        if not isinstance(found, list) or not found:
-            return False, f"nothing to pick from at {spec['list']}"
-        entries = found
+    The resolution is _resolve, the same path a fetch walks; only what
+    happens with the answer differs -- a probe reads it, a fetch keeps it.
+    """
+    entries, complaint = _resolve(spec, timeout=20)
+    if entries is None:
+        return False, complaint
 
     entry = entries[0]
     src = fill(spec["image"], entry)
