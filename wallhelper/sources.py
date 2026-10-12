@@ -9,6 +9,7 @@ window can offer to test it.
 from __future__ import annotations
 
 import contextlib
+import html
 import json
 import random
 import re
@@ -56,10 +57,10 @@ def fill(template, data) -> str:
     clock. A string with no braces is returned unchanged, which is how a
     literal URL or a fixed credit line works.
 
-    A path may be followed by filters: {a.b|name|stem}. Values pulled out of
-    APIs are so often filenames or namespaced titles ('File:Tallinn ....jpg')
-    that trimming them needed to be sayable in the template rather than in
-    here.
+    A path may be followed by filters: {a.b|name|stem|text}. Values pulled
+    out of APIs are so often filenames, namespaced titles
+    ('File:Tallinn ....jpg'), or HTML that trimming them needed to be sayable
+    in the template rather than in here.
     """
     if not template:
         return ""
@@ -77,6 +78,9 @@ def fill(template, data) -> str:
                 text = re.split(r"[/:]", text)[-1]
             elif step == "stem":     # without the extension
                 text = Path(text).stem
+            elif step == "text":     # HTML credit -> plain words
+                text = html.unescape(re.sub(r"<[^>]+>", "", text))
+                text = re.sub(r"\s+", " ", text).strip()
         return text
 
     return TOKEN.sub(one, str(template)).strip()
@@ -112,30 +116,21 @@ def _resolve(spec: dict, timeout: int = 30) -> tuple[list | None, str]:
     return [document], ""
 
 
-def fetch_source(name: str, spec: dict) -> Path | None:
-    """Run one source described entirely by config.
+def list_source(_name: str, spec: dict) -> list[dict]:
+    """Every usable entry from one source today. Nothing is downloaded.
 
-    Every source is data now: fetch a JSON document, optionally pick an entry
-    out of a list inside it, then fill a handful of templates from that entry.
-    That covers the five shipped ones and, more to the point, the next one --
-    adding a source is writing an object, not editing this file.
+    Each answer is a filled candidate -- image, title, credit, link, date,
+    ident -- after `require` and `replace` have been applied, so the gallery
+    never offers a thumb it could not later adopt.
     """
     entries, _complaint = _resolve(spec)
     if entries is None:
-        return None
+        return []
 
     demands = spec.get("require")
     demands = demands if isinstance(demands, dict) else {}
-    try:
-        floor = int(spec.get("min_width") or 0)
-    except (TypeError, ValueError):
-        floor = 0
-
-    # Start somewhere random and walk, so a folder full of past picks doesn't
-    # make a list source give up on its first collision.
-    start = random.randrange(len(entries))
-    for step in range(len(entries)):
-        entry = entries[(start + step) % len(entries)]
+    out = []
+    for entry in entries:
         if any(str(dig(entry, key)) != str(want)
                for key, want in demands.items()):
             continue
@@ -158,27 +153,68 @@ def fetch_source(name: str, spec: dict) -> Path | None:
             ident = slugify(candidate)
             if ident:
                 break
-        ident = ident or time.strftime("%H%M%S")
-        # The prefix has to be eight digits or stamp() cannot read it back,
-        # and APIs hand out dates in every punctuation they can think of.
-        day = re.sub(r"\D", "", fill(spec.get("date"), entry))
-        if len(day) != _YYYYMMDD_LEN:
-            day = time.strftime("%Y%m%d")
-        suffix = Path(urllib.parse.urlparse(src).path).suffix or ".jpg"
-        out = DIR / f"{day}-{name}-{ident}{suffix}"
-        if out.exists() or not download(src, out):
-            continue
+        out.append({
+            "image": src,
+            "title": title,
+            "credit": fill(spec.get("credit"), entry),
+            "link": fill(spec.get("link"), entry),
+            "date": fill(spec.get("date"), entry),
+            "ident": ident,
+        })
+    return out
 
-        # A photograph too small to cover the screen is worse than none: fall
-        # through to the next source rather than stretch it.
-        size = measure(out)
-        if floor and (size is None or size[0] < floor):
-            out.unlink(missing_ok=True)
-            continue
 
-        remember(out.name, title, fill(spec.get("credit"), entry),
-                 fill(spec.get("link"), entry))
-        return out
+def adopt(name: str, spec: dict, cand: dict) -> Path | None:
+    """Download one candidate into the collection and remember who made it.
+
+    Same filename rules as the daily fetch: {day}-{name}-{ident}{suffix},
+    with the day read back out of the candidate's own date.
+    """
+    src = cand.get("image") or ""
+    if not src:
+        return None
+    ident = cand.get("ident") or time.strftime("%H%M%S")
+    day = re.sub(r"\D", "", str(cand.get("date") or ""))
+    if len(day) != _YYYYMMDD_LEN:
+        day = time.strftime("%Y%m%d")
+    suffix = Path(urllib.parse.urlparse(src).path).suffix or ".jpg"
+    out = DIR / f"{day}-{name}-{ident}{suffix}"
+    if out.exists() or not download(src, out):
+        return None
+
+    # A photograph too small to cover the screen is worse than none.
+    try:
+        floor = int(spec.get("min_width") or 0)
+    except (TypeError, ValueError):
+        floor = 0
+    size = measure(out)
+    if floor and (size is None or size[0] < floor):
+        out.unlink(missing_ok=True)
+        return None
+
+    remember(out.name, cand.get("title") or "", cand.get("credit") or "",
+             cand.get("link") or "")
+    return out
+
+
+def fetch_source(name: str, spec: dict) -> Path | None:
+    """Run one source described entirely by config: list, pick one, keep it.
+
+    That covers every shipped one and, more to the point, the next one --
+    adding a source is writing an object, not editing this file.
+    """
+    cands = list_source(name, spec)
+    if not cands:
+        return None
+
+    # Start somewhere random and walk, so a folder full of past picks doesn't
+    # make a list source give up on its first collision.
+    start = random.randrange(len(cands))
+    for step in range(len(cands)):
+        cand = cands[(start + step) % len(cands)]
+        got = adopt(name, spec, cand)
+        if got is not None:
+            return got
     return None
 
 

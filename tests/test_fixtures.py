@@ -78,4 +78,4 @@ class Shipped(unittest.TestCase):
                 "url": "https://www.bing.com/HPImageArchive.aspx"
                        "?format=js&idx=0&n=1&mkt=ja-JP"}
         self.assertEqual(self.derive("bing-ja", "bing", spec),
-                         f"{time.strftime('%Y%m%d')}-bing-th.jpg")
+                         "20261007-bing-th.jpg")

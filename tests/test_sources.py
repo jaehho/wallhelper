@@ -235,3 +235,104 @@ class Probe(Source):
              mock.patch.object(sources, "download") as taken:
             sources.probe_source("test", {"image": "{path}"})
             taken.assert_not_called()
+
+
+class ListSource(Source):
+    def list(self, spec, reply):
+        document = reply if isinstance(reply, bytes) \
+            else json.dumps(reply).encode()
+        with mock.patch.object(sources, "fetch_url",
+                               return_value=document), \
+             mock.patch.object(sources, "download", side_effect=save):
+            return sources.list_source("test", spec)
+
+    def test_every_usable_entry_comes_back(self):
+        out = self.list({
+            "url": "https://example.com/api",
+            "list": "data",
+            "image": "https://example.com{path}",
+            "id": "{id}",
+            "title": "{title}",
+        }, {"data": [
+            {"path": "/a.jpg", "id": "a", "title": "One"},
+            {"path": "/b.jpg", "id": "b", "title": "Two"},
+        ]})
+        self.assertEqual([c["ident"] for c in out], ["a", "b"])
+        self.assertEqual([c["title"] for c in out], ["One", "Two"])
+
+    def test_require_filters_the_list(self):
+        out = self.list({
+            "url": "https://example.com/api",
+            "list": "data",
+            "image": "{path}",
+            "id": "{id}",
+            "require": {"media_type": "image"},
+        }, {"data": [
+            {"path": "/v.jpg", "id": "v", "media_type": "video"},
+            {"path": "/i.jpg", "id": "i", "media_type": "image"},
+        ]})
+        self.assertEqual([c["ident"] for c in out], ["i"])
+
+    def test_replace_runs_over_the_image_url(self):
+        out = self.list({
+            "url": "https://example.com/api",
+            "image": "{path}",
+            "id": "{id}",
+            "replace": [r"/[0-9]+px-", "/3840px-"],
+        }, {"path": "https://example.com/960px-a.jpg", "id": "a"})
+        self.assertEqual(out[0]["image"], "https://example.com/3840px-a.jpg")
+
+    def test_credit_text_filter_is_applied(self):
+        out = self.list({
+            "url": "https://example.com/api",
+            "image": "{path}",
+            "id": "{id}",
+            "credit": "{credit|text}",
+        }, {"path": "https://example.com/a.jpg", "id": "a",
+            "credit": "<b>Someone</b>"})
+        self.assertEqual(out[0]["credit"], "Someone")
+
+    def test_listing_never_downloads(self):
+        with mock.patch.object(sources, "fetch_url",
+                               return_value=b'{"path": "/x.jpg", "id": "x"}'), \
+             mock.patch.object(sources, "download") as taken:
+            sources.list_source("test", {"image": "{path}", "id": "{id}"})
+            taken.assert_not_called()
+
+
+class Adopt(Source):
+    def adopt(self, spec, cand):
+        with mock.patch.object(sources, "download", side_effect=save):
+            return sources.adopt("test", spec, cand)
+
+    def test_the_filename_follows_the_same_rules_as_a_fetch(self):
+        out = self.adopt({}, {"image": "https://example.com/pics/today.jpg",
+                              "ident": "abc-123", "date": "2026-10-05"})
+        self.assertEqual(out.name, "20261005-test-abc-123.jpg")
+
+    def test_the_photographer_rides_along_in_credits(self):
+        out = self.adopt({}, {"image": "https://example.com/x.jpg",
+                              "ident": "x", "date": "20261005",
+                              "title": "A title", "credit": "Someone",
+                              "link": "https://example.com/page"})
+        self.assertEqual(credits()[out.name], ("A title", "Someone",
+                                               "https://example.com/page"))
+
+    def test_min_width_rejects_a_small_photograph(self):
+        def tiny(_url, out: Path) -> bool:
+            out.write_bytes(png(800, 600))
+            return True
+        with mock.patch.object(sources, "download", side_effect=tiny):
+            self.assertIsNone(sources.adopt(
+                "test", {"min_width": 1920},
+                {"image": "https://example.com/s.jpg", "ident": "s",
+                 "date": "20261005"}))
+
+    def test_a_collision_downloads_nothing_new(self):
+        cand = {"image": "https://example.com/x.jpg", "ident": "x",
+                "date": "20261005"}
+        first = self.adopt({}, cand)
+        with mock.patch.object(sources, "download") as taken:
+            self.assertIsNone(sources.adopt("test", {}, cand))
+            taken.assert_not_called()
+        self.assertTrue(first.exists())

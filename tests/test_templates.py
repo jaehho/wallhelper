@@ -58,5 +58,17 @@ class Fill(unittest.TestCase):
         self.assertEqual(fill("{image.title|name|stem}", REPLY),
                          "Tallinn_vanalinn")
 
+    def test_text_strips_html_from_a_credit(self):
+        # APOD's WordPress reply credits with links.
+        self.assertEqual(
+            fill("{credit|text}",
+                 {"credit": '<a href="https://www.nsf.gov/">NSF</a>, '
+                            "B. Gudbjartsson"}),
+            "NSF, B. Gudbjartsson")
+
+    def test_text_unescapes_entities_and_collapses_whitespace(self):
+        self.assertEqual(fill("{c|text}", {"c": "A &amp; B<br>  C"}),
+                         "A & B C")
+
     def test_no_template_is_empty(self):
         self.assertEqual(fill(None, REPLY), "")
