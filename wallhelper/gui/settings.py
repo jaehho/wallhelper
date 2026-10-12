@@ -7,7 +7,13 @@ from pathlib import Path
 
 import gi
 
-from ..config import BLURBS, apply_key, config, needs_setup, save_config
+from ..config import (
+    BLURBS,
+    apply_key,
+    config,
+    needs_setup,
+    save_config,
+)
 from ..paths import CONFIG
 from ..sources import host, probe_source
 
@@ -52,15 +58,21 @@ class SettingsPanel(Gtk.Revealer):
         head.append(shut)
         column.append(head)
 
-        self.section(column, "SOURCES")
-        self.source_list = Gtk.Box(
+        self.section(column, "MORNING")
+        self.auto_list = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=0, margin_top=4)
-        column.append(self.source_list)
+        column.append(self.auto_list)
+
+        self.section(column, "ELSEWHERE")
+        self.gallery_list = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=0, margin_top=4)
+        column.append(self.gallery_list)
 
         note = Gtk.Label(
-            label="Numbered in the order they are tried. The first one "
-                  "with a photograph for today wins, so the rest are a "
-                  "fallback \u2014 click a name to switch it on or off.",
+            label="Morning is Bing's picture of the day. Elsewhere is for "
+                  "when you want a change by hand. Click a name to switch "
+                  "it on or off. Moving a source between the two lists is "
+                  "a config.json edit \u2014 the file is better at being a file.",
             xalign=0, wrap=True, max_width_chars=44, margin_top=16,
         )
         note.add_css_class("footnote")
@@ -107,64 +119,71 @@ class SettingsPanel(Gtk.Revealer):
         self.set_child(panel)
 
     def fill_sources(self):
-        """One row per source: the ones in use first, in the order they
-        are tried, then the ones you could switch on."""
-        while (child := self.source_list.get_first_child()):
-            self.source_list.remove(child)
+        """MORNING lists the autofetch names; ELSEWHERE the gallery and
+        anything else defined that you could switch on."""
+        for box in (self.auto_list, self.gallery_list):
+            while (child := box.get_first_child()):
+                box.remove(child)
 
         cfg = config()
-        on = [name for name in (cfg.get("sources") or [])
-              if isinstance(cfg.get(name), dict)]
+        auto = [name for name in (cfg.get("autofetch") or [])
+                if isinstance(cfg.get(name), dict)]
+        gallery = [name for name in (cfg.get("gallery") or [])
+                   if isinstance(cfg.get(name), dict)]
         rest = [name for name, spec in cfg.items()
-                if name not in on and isinstance(spec, dict)
-                and spec.get("image")]
+                if name not in auto and name not in gallery
+                and isinstance(spec, dict) and spec.get("image")]
         self.source_notes = {}
         self.source_rows = {}
         self.first_row = None
 
-        for name in on + rest:
-            spec = cfg[name]
-            row = Gtk.Button()
-            row.add_css_class("source-row")
-            row.set_cursor(self.pointer)
-            row.set_tooltip_text(
-                f"Stop using {name}" if name in on else f"Use {name}")
-            row.connect("clicked", self.on_toggle_source, name)
-            if name not in on:
-                row.set_opacity(0.5)
+        for name in auto:
+            self._row(self.auto_list, name, cfg[name], True, "autofetch")
+        for name in gallery + rest:
+            self._row(self.gallery_list, name, cfg[name], name in gallery,
+                      "gallery")
 
-            line = Gtk.Box(spacing=13)
-            mark = Gtk.Label(
-                label=str(on.index(name) + 1) if name in on
-                else "\u00b7", valign=Gtk.Align.START)
-            mark.add_css_class("chip")
-            if name in on:
-                mark.add_css_class("on")
-            mark.set_size_request(15, -1)
-            line.append(mark)
+    def _row(self, box, name, spec, on, which):
+        row = Gtk.Button()
+        row.add_css_class("source-row")
+        row.set_cursor(self.pointer)
+        row.set_tooltip_text(
+            f"Stop using {name}" if on else f"Use {name}")
+        row.connect("clicked", self.on_toggle_source, name, which)
+        if not on:
+            row.set_opacity(0.5)
 
-            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3,
-                           hexpand=True)
-            title = Gtk.Label(label=name, xalign=0)
-            title.add_css_class("key-name")
-            text.append(title)
-            note = Gtk.Label(
-                label=BLURBS.get(name) or host(spec.get("url")),
-                xalign=0, wrap=True, max_width_chars=40,
-            )
-            note.add_css_class("footnote")
-            text.append(note)
-            self.source_notes[name] = note
-            line.append(text)
+        line = Gtk.Box(spacing=13)
+        mark = Gtk.Label(label="*" if on else "\u00b7",
+                         valign=Gtk.Align.START)
+        mark.add_css_class("chip")
+        if on:
+            mark.add_css_class("on")
+        mark.set_size_request(15, -1)
+        line.append(mark)
 
-            row.set_child(line)
-            self.source_list.append(row)
-            self.source_rows[name] = row
-            self.first_row = self.first_row or row
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3,
+                       hexpand=True)
+        title = Gtk.Label(label=name, xalign=0)
+        title.add_css_class("key-name")
+        text.append(title)
+        note = Gtk.Label(
+            label=BLURBS.get(name) or host(spec.get("url")),
+            xalign=0, wrap=True, max_width_chars=40,
+        )
+        note.add_css_class("footnote")
+        text.append(note)
+        self.source_notes[name] = note
+        line.append(text)
 
-            token = needs_setup(spec)
-            if token and (spec.get("key") or {}).get("into"):
-                self.source_list.append(self.key_card(name, spec, token))
+        row.set_child(line)
+        box.append(row)
+        self.source_rows[name] = row
+        self.first_row = self.first_row or row
+
+        token = needs_setup(spec)
+        if token and (spec.get("key") or {}).get("into"):
+            box.append(self.key_card(name, spec, token))
 
     def key_card(self, name, spec, token):
         """The gap between "switch this on" and "it works" is a signup
@@ -217,12 +236,13 @@ class SettingsPanel(Gtk.Revealer):
             return
         cfg = config()
         cfg[name] = apply_key(cfg.get(name) or {}, token, value)
-        on = [key for key in (cfg.get("sources") or [])
-              if isinstance(key, str)]
+        key = "autofetch" if name == "bing" else "gallery"
+        on = [item for item in (cfg.get(key) or [])
+              if isinstance(item, str)]
         if name not in on:
             # Pasting a key is the same sentence as "use this one".
             on.append(name)
-            cfg["sources"] = on
+            cfg[key] = on
         try:
             save_config(cfg)
         except OSError as problem:
@@ -234,15 +254,15 @@ class SettingsPanel(Gtk.Revealer):
         self.set_status(f"{name} has its key and is switched on. "
                         f"Press CHECK to see what it has today.")
 
-    def on_toggle_source(self, _button, name):
+    def on_toggle_source(self, _button, name, which):
         cfg = config()
-        on = [key for key in (cfg.get("sources") or [])
-              if isinstance(key, str)]
+        on = [item for item in (cfg.get(which) or [])
+              if isinstance(item, str)]
         if name in on:
             on.remove(name)
         else:
             on.append(name)
-        cfg["sources"] = on
+        cfg[which] = on
         try:
             save_config(cfg)
         except OSError as problem:
@@ -253,9 +273,10 @@ class SettingsPanel(Gtk.Revealer):
         # focus falls back to the top of the list every time.
         self.get_root().set_focus(
                 self.source_rows.get(name) or self.first_row)
-        if not on:
-            self.set_status("No source is switched on. Tomorrow\u2019s "
-                            "fetch will have nowhere to look.", bad=True)
+        if not (cfg.get("autofetch") or []):
+            self.set_status("No morning source is switched on. "
+                            "Tomorrow\u2019s fetch will have nowhere to look.",
+                            bad=True)
         elif name in on and needs_setup(cfg.get(name) or {}):
             self.set_status(f"{name} needs a key before it can work; "
                             f"there is a box for it below the row.",

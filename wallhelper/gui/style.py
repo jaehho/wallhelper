@@ -14,7 +14,8 @@ from ..paths import PALETTE
 DISPLAY = '"Adwaita Sans", sans-serif'
 DATA = '"JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace'
 
-THUMB_W, THUMB_H = 112, 63       # 16:9, filmstrip height
+THUMB_W, THUMB_H = 112, 63       # 16:9, elsewhere row
+GRID_W, GRID_H = 220, 124        # 16:9, collection tiles
 
 
 def palette() -> dict[str, str]:
@@ -92,20 +93,28 @@ def stylesheet(colors: dict[str, str]) -> str:
 
     .hairline {{ background: alpha({colors['text']}, 0.10); min-height: 1px; }}
 
-    /* Opacity says 'kept'. The accent rule says 'on screen now'. Two
-       channels, two meanings, no badges. */
-    .thumb-button {{
+    /* The accent rule says 'on screen now'. One channel, one meaning. */
+    .thumb-button, .grid-tile {{
         background: none; background-image: none; border: none;
         box-shadow: none; padding: 0; min-height: 0; min-width: 0;
         border-bottom: 2px solid transparent;
-        opacity: 0.5; transition: opacity 140ms ease;
+        opacity: 0.72; transition: opacity 140ms ease;
     }}
-    .thumb-button.kept    {{ opacity: 1; }}
-    .thumb-button:hover   {{ opacity: 1; }}
-    .thumb-button.current {{ opacity: 1; border-bottom-color: {colors['blue']}; }}
+    .thumb-button:hover, .grid-tile:hover {{ opacity: 1; }}
+    .thumb-button.current, .grid-tile.current {{
+        opacity: 1; border-bottom-color: {colors['blue']};
+    }}
     .thumb {{
         border-radius: 2px;
         box-shadow: inset 0 0 0 1px alpha({colors['text']}, 0.14);
+    }}
+
+    .elsewhere-row {{
+        padding: 10px 18px 6px 18px;
+    }}
+    .elsewhere-label {{
+        font-family: {DATA}; font-size: 10px; font-weight: 600;
+        letter-spacing: 1.5px; color: {colors['overlay2']};
     }}
 
     .close-btn {{

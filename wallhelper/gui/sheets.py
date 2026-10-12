@@ -15,23 +15,23 @@ from gi.repository import Gtk  # noqa: E402
 
 GUIDE = (
     ("EACH MORNING",
-     "A new photograph arrives and becomes your wallpaper. "
-     "Press N if you want a different one today."),
-    ("WHEN YOU LIKE ONE",
-     "Press K to keep it. Anything you don't keep is deleted when the "
-     "next photograph arrives \u2014 there is no countdown and nothing "
-     "to tidy up later. Once a photo is kept, the same key is how you "
-     "delete it."),
-    ("OVER TIME",
-     "The strip along the bottom is what you kept. Bright means kept, "
-     "and the blue rule marks the one on screen. Walk it with H and L."),
+     "Bing's photograph for the day arrives and becomes your wallpaper. "
+     "It is saved automatically."),
+    ("THE COLLECTION",
+     "Everything fetched is kept. Choose one to set it again, or delete "
+     "the ones you no longer want."),
+    ("ELSEWHERE",
+     "Today's pictures from the other sources. Choosing one saves it "
+     "and makes it the wallpaper."),
 )
 
 SHORTCUTS = (
-    ("H   L", "\u2190  \u2192", "Move through the strip"),
-    ("K", "", "Keep this photo \u00b7 delete it once kept"),
-    ("N", "", "Fetch a different photo"),
+    ("\u2190  \u2192  H  L", "", "Move through the collection"),
+    ("Enter", "", "Set the selected photograph as wallpaper"),
+    ("D", "", "Delete from the collection"),
     ("O", "", "Open the source page"),
+    ("E", "", "Expand or collapse Elsewhere"),
+    ("F", "", "Fetch the morning photo now"),
     (",", "", "Settings"),
     ("?", "", "This list"),
     ("G", "", "Show the welcome guide"),
@@ -50,8 +50,7 @@ def guide_sheet(pointer, on_close):
     card.append(thesis)
 
     sub = Gtk.Label(
-        label="Bing, Wikipedia and NASA each publish one. "
-              "You get today's, every morning.",
+        label="Bing in the morning, and the ones you saved.",
         xalign=0, wrap=True, margin_top=10, max_width_chars=52,
     )
     sub.add_css_class("guide-sub")
