@@ -2,7 +2,7 @@
 Type=Application
 Name=Wallhelper
 GenericName=Wallpaper
-Comment=One new photograph a day, and the ones you kept
+Comment=Bing in the morning, and the ones you saved
 Exec=wallhelper gui
 Icon=image-x-generic
 Terminal=false
