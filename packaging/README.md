@@ -40,9 +40,9 @@ than on the next daily fetch.
 ## Update
 
 `-git` packages track `main` automatically, and `/etc/paru.conf` here has
-`Devel` on, so `paru -Syu` — which `make sync` runs — rebuilds whenever this
+`Devel` on, so `paru -Syu` / `dotfiles sync` rebuilds whenever this
 repo gets new commits. Only re-touch the AUR when the recipe itself changes
 (deps, install layout), and regenerate `.SRCINFO` when you do.
 
-`make status` in dotfiles reports whether the installed package matches this
+`dotfiles` reports whether the installed package matches this
 repo's HEAD.
