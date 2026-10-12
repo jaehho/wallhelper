@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wallhelper"
 version = "1.0.0"
-description = "One new photograph a day, and the ones you kept."
+description = "Bing in the morning, and the ones you saved."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Jaeho Cho" }]
-keywords = ["wallpaper", "hyprland", "hyprpaper", "bing", "wallhaven"]
+keywords = ["wallpaper", "hyprland", "hyprpaper", "bing"]
 
 # PyGObject is deliberately absent. `wallhelper gui` needs GTK4 and libadwaita,
 # which come from the distribution (python-gobject, gtk4, libadwaita) and not

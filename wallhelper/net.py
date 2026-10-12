@@ -9,8 +9,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Plain token on purpose: wallhaven's WAF 403s any User-Agent carrying a
-# parenthesized URL, which silently kills that source.
+# Plain token on purpose: some CDNs 403 any User-Agent carrying a
+# parenthesized URL, which silently kills the source behind it.
 UA = "wallhelper/1.0"
 
 

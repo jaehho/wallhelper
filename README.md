@@ -1,11 +1,12 @@
 # wallhelper
 
-One new photograph a day, and the ones you kept.
+Bing in the morning, and the ones you saved.
 
-Every morning it fetches a photograph — Bing's picture of the day, a Wallhaven
-top wallpaper, NASA's APOD, whatever you switch on — sets it as the wallpaper,
-and remembers who took it. Photographs you don't keep are deleted when the next
-one arrives. There is no countdown and nothing to tidy up later.
+Every morning it fetches Bing's picture of the day, sets it as the wallpaper,
+and keeps it. The window is a gallery of that collection. When you want a
+change by hand, Elsewhere shows today's pictures from the other sources —
+choosing one saves it and makes it the wallpaper. Photographs you delete go to
+Trash. There is no countdown and nothing to tidy up later.
 
 Built for Hyprland and hyprpaper. The window is GTK4 and libadwaita.
 
@@ -21,16 +22,15 @@ AUR workflow.
 ## Use
 
 ```
-wallhelper fetch [--next]    pull the day's photo (what the systemd timer runs)
-wallhelper set <image>       make an image the wallpaper
-wallhelper keep [--undo]     keep what's on screen
-wallhelper delete            remove what's on screen for good
-wallhelper info              what's on screen and where it came from
-wallhelper gui               the same thing with pictures
+wallhelper fetch [--wait]   pull the day's photo (what the systemd timer runs)
+wallhelper set <image>      make an image the wallpaper
+wallhelper delete           remove what's on screen for good
+wallhelper info             what's on screen and where it came from
+wallhelper gui              the same thing with pictures
 ```
 
-In the window: `H`/`L` walk the strip, `K` keeps the photograph (and deletes it
-once kept), `N` fetches a different one, `O` opens the source page, `,` opens
+In the window: click a tile to set it as wallpaper, `D` deletes,
+`E` expands Elsewhere, `O` opens the source page, `F` fetches now, `,` opens
 settings, `?` lists every shortcut, `G` shows the guide.
 
 ## Sources
@@ -48,15 +48,15 @@ A source is data, not code:
 }
 ```
 
-Fetch one JSON document, optionally pick a random entry from an array inside
-it, fill the templates from that entry. `{a.path}` reads a value out of the
-reply, `{date:%Y%m%d}` comes from the clock, `"."` as a list means the reply is
-itself an array, and a string with no braces is used as-is.
+Fetch one JSON document, optionally pick entries from an array inside it, fill
+the templates from each. `{a.path}` reads a value out of the reply,
+`{date:%Y%m%d}` comes from the clock, `"."` as a list means the reply is itself
+an array, and a string with no braces is used as-is.
 
 | field | |
 |---|---|
 | `url` | the JSON to fetch |
-| `list` | path to an array; one entry is picked at random |
+| `list` | path to an array; every entry is a gallery candidate |
 | `image` | the photograph's URL — the only required field |
 | `title` | shown large on the label |
 | `credit` | photographer; `place (© name)` splits across both label lines |
@@ -69,10 +69,23 @@ itself an array, and a string with no braces is used as-is.
 | `min_width` | skip anything narrower than this |
 | `key` | `{"get": url, "note": text, "into": placeholder}` — see below |
 
-Shipped: `bing`, `wallhaven`, `apod`, `wikipedia`, `unsplash`. Switch them on in
-the settings panel, which also has a **CHECK** button that asks every source
-what it has today without downloading it — the fastest way to find out whether
-a source you wrote works.
+Filters in a template: `|name` (after the last `/` or `:`), `|stem` (without
+the extension), `|text` (strip HTML, for credits that come wrapped in tags).
+
+Two name lists decide what a source is for:
+
+```json
+"autofetch": ["bing"],
+"gallery":   ["apod", "wikipedia", "unsplash"]
+```
+
+`autofetch` is the morning timer. `gallery` is the Elsewhere row. Shipped:
+`bing` (morning), `apod`, `wikipedia`, `unsplash`. APOD reads NASA's WordPress
+`apod-basic` route (the old `api.nasa.gov/planetary` image fields are gone).
+Unsplash takes `count=12` so Elsewhere has a grid; it needs a free access key
+pasted into its url. Switch sources on in the settings panel, which also has a
+**CHECK** button that asks every source what it has today without downloading
+it.
 
 A source needing an API key declares where to get one, and the panel then offers
 the signup link and a box to paste into; the key goes wherever the placeholder
@@ -83,12 +96,13 @@ the shipped sources stay shipped, so they keep improving.
 
 ## How it fits together
 
-- `.current` in the collection is a symlink, and hyprpaper.conf points at it, so
-  the wallpaper survives a reboot. Talking to hyprpaper alone does not.
-- `kept/` holds hardlinks, not copies. Keeping a photograph costs no disk and is
-  the only thing that saves it from the next sweep.
+- The collection is one folder. `.current` in it is a symlink, and
+  hyprpaper.conf points at that, so the wallpaper survives a reboot. Talking
+  to hyprpaper alone does not.
 - `.credits` is tab-separated filename/title/byline/url. A dotfile, so an image
   browser pointed at the folder skips it.
+- Everything fetched is kept. Deleting is the only removal, and it goes through
+  the desktop wastebasket.
 
 ## Develop
 
@@ -107,6 +121,6 @@ else and a guard stops them before they touch a real collection.
 Modules: `paths` (every path, importing nothing), `config` (the shipped sources
 and your deltas), `net`, `desktop` (notifications, hyprctl, hyprpaper),
 `library` (the collection on disk), `sources` (the template engine), `cli`, and
-`gui/` (`style`, `thumbs`, `sheets`, `settings`, `window`, `app`). Importing
-`wallhelper.gui` is what pulls in GTK, which is why the CLI does it inside the
-`gui` subcommand and nowhere else.
+`gui/` (`style`, `thumbs`, `grid`, `elsewhere`, `plate`, `sheets`, `settings`,
+`window`, `app`). Importing `wallhelper.gui` is what pulls in GTK, which is why
+the CLI does it inside the `gui` subcommand and nowhere else.
