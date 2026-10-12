@@ -1,4 +1,4 @@
-"""Reading a photo off disk, and deciding what goes."""
+"""Reading a photo off disk, and what the folder used to hold."""
 
 import struct
 import unittest
@@ -6,7 +6,7 @@ import zlib
 
 from tests import guard
 from wallhelper import library
-from wallhelper.paths import CREDITS, DIR, KEPT
+from wallhelper.paths import CREDITS, CURRENT, DIR
 
 
 def setUpModule():
@@ -62,47 +62,75 @@ class Measure(unittest.TestCase):
         self.assertIsNone(library.measure(path))
 
 
-class Sweep(unittest.TestCase):
+class MigrateCollection(unittest.TestCase):
     def setUp(self):
         DIR.mkdir(parents=True, exist_ok=True)
-        KEPT.mkdir(parents=True, exist_ok=True)
-        for path in list(DIR.glob("*.png")) + list(KEPT.glob("*.png")):
-            path.unlink()
+        kept = DIR / "kept"
+        liked = DIR / "liked"
+        for folder in (kept, liked):
+            if folder.is_dir():
+                for path in folder.glob("*.*"):
+                    path.unlink()
+                folder.rmdir()
+        for path in DIR.glob("*.*"):
+            if path.is_file() and not path.name.startswith("."):
+                path.unlink()
         CREDITS.unlink(missing_ok=True)
+        CURRENT.unlink(missing_ok=True)
+        self.kept = kept
 
-    def make(self, name, credited=True, kept=False):
-        path = DIR / name
+    def make(self, name, also_in_dir=False):
+        self.kept.mkdir(parents=True, exist_ok=True)
+        path = self.kept / name
         path.write_bytes(png(4, 4))
-        if credited:
-            library.remember(name, "A title", "Someone", "https://example.com")
-        if kept:
-            (KEPT / name).hardlink_to(path)
+        if also_in_dir:
+            (DIR / name).hardlink_to(path)
         return path
 
-    def test_an_unkept_download_goes(self):
-        self.make("20260905-bing-old.png")
-        self.assertEqual(library.sweep(), ["20260905-bing-old.png"])
+    def test_a_hardlink_twin_loses_the_kept_name_only(self):
+        path = self.make("20260905-bing-x.png", also_in_dir=True)
+        inode = path.stat().st_ino
+        library.migrate_collection()
+        self.assertEqual((DIR / "20260905-bing-x.png").stat().st_ino, inode)
+        self.assertFalse(self.kept.exists())
 
-    def test_a_kept_photo_stays(self):
-        self.make("20260905-bing-keeper.png", kept=True)
-        self.make("20260904-bing-other.png")
-        self.assertEqual(library.sweep(), ["20260904-bing-other.png"])
+    def test_a_kept_only_file_moves_into_the_folder(self):
+        self.make("20260905-bing-only.png")
+        moved = library.migrate_collection()
+        self.assertEqual(moved, ["20260905-bing-only.png"])
+        self.assertTrue((DIR / "20260905-bing-only.png").is_file())
+        self.assertFalse(self.kept.exists())
 
-    def test_a_file_we_did_not_download_is_never_touched(self):
-        # The version this replaced deleted by age alone and wiped a
-        # hand-built library on its first run.
-        self.make("20260905-bing-ours.png")
-        self.make("holiday.png", credited=False)
-        self.assertEqual(library.sweep(), ["20260905-bing-ours.png"])
-        self.assertTrue((DIR / "holiday.png").exists())
+    def test_a_name_clash_keeps_both_bytes(self):
+        kept = self.make("20260905-bing-clash.png")
+        kept_size = kept.stat().st_size
+        other = DIR / "20260905-bing-clash.png"
+        other.write_bytes(png(9, 9))
+        library.migrate_collection()
+        self.assertTrue(other.is_file())
+        moved = DIR / "20260905-bing-clash-kept.png"
+        self.assertTrue(moved.is_file())
+        self.assertEqual(moved.stat().st_size, kept_size)
 
-    def test_the_spared_one_survives(self):
-        keep = self.make("20260906-bing-today.png")
-        self.make("20260905-bing-yesterday.png")
-        self.assertEqual(library.sweep(spare=keep),
-                         ["20260905-bing-yesterday.png"])
+    def test_liked_is_the_older_name_for_kept(self):
+        liked = DIR / "liked"
+        liked.mkdir(parents=True, exist_ok=True)
+        (liked / "20260905-bing-old.png").write_bytes(png(4, 4))
+        library.migrate_collection()
+        self.assertTrue((DIR / "20260905-bing-old.png").is_file())
+        self.assertFalse(liked.exists())
 
-    def test_sweeping_forgets_the_credit_too(self):
-        self.make("20260905-bing-old.png")
-        library.sweep()
-        self.assertNotIn("20260905-bing-old.png", library.credits())
+    def test_current_is_repointed_off_kept(self):
+        path = self.make("20260905-bing-cur.png", also_in_dir=True)
+        CURRENT.symlink_to(path)
+        library.migrate_collection()
+        self.assertEqual(CURRENT.resolve(), (DIR / "20260905-bing-cur.png")
+                         .resolve())
+
+    def test_collection_is_just_the_folder(self):
+        self.make("20260905-bing-a.png", also_in_dir=True)
+        self.make("20260904-bing-b.png")
+        library.migrate_collection()
+        names = [p.name for p in library.collection()]
+        self.assertEqual(names,
+                         ["20260905-bing-a.png", "20260904-bing-b.png"])

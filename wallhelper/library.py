@@ -1,12 +1,13 @@
-"""The collection on disk: what is in it, what each photo is, what goes.
+"""The collection on disk: what is in it, and what each photo is.
 
-The three durable pieces are the folder itself, kept/ (hardlinks, so keeping a
-photo costs nothing and survives the sweep) and .credits (who took it). Nothing
+The durable pieces are the folder itself and .credits (who took it).
+Everything fetched is kept; the only removal is the one you ask for. Nothing
 in here knows about a window or a command line.
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
 import struct
 import subprocess
@@ -14,7 +15,12 @@ import unicodedata
 from pathlib import Path
 
 from .desktop import active, focused_monitor, push_wallpaper
-from .paths import CREDITS, CURRENT, DIR, IMAGE_SUFFIXES, KEPT, THUMBS
+from .paths import CREDITS, CURRENT, DIR, IMAGE_SUFFIXES, THUMBS
+
+# Migration only: kept/ and liked/ were how a photo outlived the daily
+# copy. The collection is one folder now.
+_KEPT = DIR / "kept"
+_LEGACY_KEPT = DIR / "liked"
 
 
 def slugify(text: str, limit: int = 44) -> str:
@@ -42,19 +48,14 @@ def images(folder: Path) -> list[Path]:
 
 
 def collection() -> list[Path]:
-    """Everything on offer, newest name first: the photos you kept, plus
-    whatever else is in the folder. A photo kept months ago outlives its daily
-    copy, so this is a union rather than one directory listing."""
-    seen = {path.name: path for path in images(KEPT)}
-    seen.update({path.name: path for path in images(DIR)})
-    return [seen[name] for name in sorted(seen, reverse=True)]
+    """Everything on offer, newest name first. One folder, one photo each."""
+    return images(DIR)
 
 
 def trash(path: Path) -> bool:
     """Send to the desktop wastebasket, not unlink.
 
-    A person deleting a photograph can change their mind; the automatic sweep
-    below unlinks outright because that is housekeeping nobody chose."""
+    A person deleting a photograph can change their mind."""
     try:
         done = subprocess.run(["gio", "trash", str(path)],
                               capture_output=True, timeout=15, check=False)
@@ -105,15 +106,6 @@ def remember(name: str, title: str, byline: str, url: str) -> None:
 # --- what's on screen -----------------------------------------------------
 
 
-def canonical(path: Path) -> Path:
-    """kept/ holds hardlinks, so a kept photo has two paths to one inode.
-    Always prefer the one in the folder proper: displaying the kept/ path
-    means `keep --undo` would unlink the very file on screen."""
-    if path.parent == KEPT and (DIR / path.name).is_file():
-        return DIR / path.name
-    return path
-
-
 def current_image() -> Path | None:
     """The wallpaper on the focused monitor, else any displayed one, else
     whatever .current points at (hyprpaper may not be running)."""
@@ -123,7 +115,7 @@ def current_image() -> Path | None:
         path = shown.get(name) if name else None
         path = path or next(iter(shown.values()))
         if path and Path(path).is_file():
-            return canonical(Path(path))
+            return Path(path)
     if CURRENT.is_file():
         return CURRENT.resolve()
     return None
@@ -167,11 +159,10 @@ def label(path: Path | None) -> dict[str, str]:
     known = credits()
     title, credit, url = known.get(path.name, ("", "", ""))
     date, source = stamp(path.name)
-    kept = (KEPT / path.name).exists()
 
-    # 'wallhaven 7jlq13' is a filename wearing a title's clothes. Better to
-    # show no title than a fake one -- the accession line already says where
-    # this came from, which is all that string ever meant.
+    # An id wearing a title's clothes ('wallhaven 7jlq13'). Better to show
+    # no title than a fake one -- the accession line already says where this
+    # came from, which is all that string ever meant.
     if title.lower().startswith("wallhaven "):
         title = ""
 
@@ -180,14 +171,14 @@ def label(path: Path | None) -> dict[str, str]:
     match = CREDIT_RE.match(credit)
     place, author = (match.group(1), match.group(2)) if match else ("", credit)
 
-    # A photographer credited as 'wallhaven.cc' only repeats the source token.
+    # A photographer credited as the source's own host only repeats the
+    # source token.
     if author and source and author.lower().split(".")[0] == source:
         author = ""
 
     return {
         "file": str(path), "title": title, "place": place, "date": date,
         "source": source, "author": author, "url": url,
-        "kept": "yes" if kept else "no",
         "ours": "yes" if path.name in known else "no",
     }
 
@@ -234,7 +225,7 @@ def set_wallpaper(image: Path, push: bool = True) -> None:
     first: .current must not point at another symlink, or pruning the middle
     link leaves it dangling.
     """
-    image = canonical(image).resolve(strict=True)
+    image = image.resolve(strict=True)
     DIR.mkdir(parents=True, exist_ok=True)
 
     tmp = CURRENT.with_name(CURRENT.name + ".new")
@@ -246,54 +237,54 @@ def set_wallpaper(image: Path, push: bool = True) -> None:
         push_wallpaper(image)
 
 
-# --- pruning --------------------------------------------------------------
+# --- migration ------------------------------------------------------------
 
 
-def sweep(spare: Path | None = None) -> list[str]:
-    """A photo you didn't keep goes when the next one arrives. No countdown,
-    and no way to switch it off -- keeping something is the only signal,
-    so a second one would just be a way to make the first mean nothing.
-
-    Three things are never touched. Files not in .credits, because we didn't
-    download them -- an earlier version deleted by age alone and wiped a
-    twelve-image hand-built library on its first run, since every file in it
-    was older than the cutoff. Photos you kept, which is the whole point.
-    And whatever is on screen or under .current, because hyprpaper resolves
-    that symlink at startup and a dangling one means no wallpaper at the next
-    login.
-    """
-    known = credits()
-    if not known:
+def migrate_collection() -> list[str]:
+    """kept/ and liked/ were how a photo outlived the daily copy. One folder
+    now; anything still sitting in those names is merged in as kept."""
+    if _LEGACY_KEPT.is_dir() and not _KEPT.exists():
+        with contextlib.suppress(OSError):
+            _LEGACY_KEPT.rename(_KEPT)
+    if not _KEPT.is_dir():
         return []
 
-    spared = {Path(path).resolve() for path in active().values()}
-    if CURRENT.is_symlink():
-        spared.add(CURRENT.resolve())
-    if spare is not None:
-        spared.add(spare.resolve())
+    DIR.mkdir(parents=True, exist_ok=True)
+    moved: list[str] = []
+    for path in list(images(_KEPT)):
+        dest = DIR / path.name
+        if not dest.exists():
+            path.rename(dest)
+            moved.append(path.name)
+        elif dest.stat().st_ino == path.stat().st_ino:
+            path.unlink()          # hardlink twin: drop the extra name
+        else:
+            path.rename(DIR / f"{path.stem}-kept{path.suffix}")
+            moved.append(path.name)
 
-    removed = []
-    for path in images(DIR):
-        if path.name not in known or path.resolve() in spared:
-            continue
-        if (KEPT / path.name).exists():
-            continue
-        try:
-            path.unlink()
-            removed.append(path.name)
-        except OSError:
-            pass
-    forget(removed)
-    return removed
+    # .current may still name a path under kept/; repoint before that name
+    # disappears so a reboot is never without a wallpaper.
+    if CURRENT.is_symlink():
+        raw = Path(CURRENT.readlink())
+        if raw.parent == _KEPT:
+            twin = DIR / raw.name
+            if twin.is_file():
+                tmp = CURRENT.with_name(CURRENT.name + ".new")
+                tmp.unlink(missing_ok=True)
+                tmp.symlink_to(twin.resolve())
+                tmp.replace(CURRENT)
+
+    with contextlib.suppress(OSError):
+        _KEPT.rmdir()
+    return moved
 
 
 def forget(names: list[str]) -> None:
-    """Drop ledger lines whose file is gone from both folders, so .credits
-    doesn't outgrow the collection it describes."""
+    """Drop ledger lines whose file is gone, so .credits doesn't outgrow
+    the collection it describes."""
     if not names:
         return
-    gone = {name for name in names
-            if not (DIR / name).exists() and not (KEPT / name).exists()}
+    gone = {name for name in names if not (DIR / name).exists()}
     if not gone:
         return
     for name in gone:

@@ -11,7 +11,7 @@ from __future__ import annotations
 import contextlib
 import json
 
-from .paths import CONFIG, KEPT, LEGACY_KEPT
+from .paths import CONFIG
 
 # Settings the window can change, which is why they are not in this file. A
 # stowed dotfile is a symlink into the git repo; writing to it from a GUI would
@@ -210,9 +210,6 @@ def _rewrite_lists(stored: dict) -> dict:
 
 def migrate() -> None:
     """One-shot repairs for configs written by an older wallhelper."""
-    if LEGACY_KEPT.is_dir() and not KEPT.exists():
-        with contextlib.suppress(OSError):
-            LEGACY_KEPT.rename(KEPT)
     try:
         stored = json.loads(CONFIG.read_text())
     except (OSError, json.JSONDecodeError, ValueError):
