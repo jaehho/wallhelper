@@ -13,7 +13,7 @@ lint:            ## ruff
 	ruff check wallhelper tests
 
 run:             ## the window, from the source tree
-	python -m wallhelper.cli gui
+	python -m wallhelper gui
 
 install:         ## build and install the Arch package (asks for sudo)
 	cd packaging && makepkg -si --noconfirm
