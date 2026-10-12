@@ -18,17 +18,19 @@ from .paths import CONFIG, KEPT, LEGACY_KEPT
 # mean the app editing the repo behind your back. Defaults live here, the
 # deltas live in CONFIG, and a missing or corrupt CONFIG just means defaults.
 #
-# Nothing below is a fixed vocabulary. Both sources take their parameters
-# straight from here -- wallhaven's is the raw query string, so every
-# parameter its API accepts works whether or not this file mentions it -- and
-# config() keeps any key you add that isn't listed.
-# Every source is data. The engine below fetches `url`, optionally picks an
-# entry out of the array at `list`, then fills these templates from it:
+# Nothing below is a fixed vocabulary. Sources take their parameters straight
+# from here -- a url is a url, and config() keeps any key you add that isn't
+# listed. Every source is data. The engine fetches `url`, optionally picks
+# entries out of the array at `list`, then fills these templates from each:
 # {some.json.path} anywhere in a string, plus {date:%Y%m%d} from the clock.
-# Adding a source means adding one of these objects and putting its name in
-# `sources` -- there is no code to change.
+# Adding a source means adding one of these objects and naming it in
+# `autofetch` or `gallery` -- there is no code to change.
+#
+# `autofetch` is what the morning timer pulls (bing). `gallery` is what the
+# window offers when you want a different wallpaper by hand.
 DEFAULTS = {
-    "sources": ["bing", "wallhaven"],
+    "autofetch": ["bing"],
+    "gallery": ["apod", "wikipedia", "unsplash"],
     "bing": {
         "url": "https://www.bing.com/HPImageArchive.aspx"
                "?format=js&idx=0&n=1&mkt=en-US",
@@ -42,23 +44,15 @@ DEFAULTS = {
         "link": "{copyrightlink}",
         "date": "{startdate}",
     },
-    "wallhaven": {
-        "url": "https://wallhaven.cc/api/v1/search"
-               "?categories=100&purity=100&atleast=2560x1440"
-               "&sorting=toplist&topRange=1M",
-        "list": "data",
-        "image": "{path}",
-        "id": "{id}",
-        "credit": "wallhaven.cc",
-        "link": "https://wallhaven.cc/w/{id}",
-    },
     "apod": {
-        "url": "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY",
+        # api.nasa.gov/planetary/apod lost its image fields in the 2026-09
+        # WordPress move; this route is the replacement and needs no key.
+        "url": "https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=8",
+        "list": ".",
         "image": "{hdurl}",
         "title": "{title}",
-        "credit": "{copyright}",
-        # astropix.html is whatever is newest; apYYMMDD.html is this one.
-        "link": "https://apod.nasa.gov/apod/ap{date:%y%m%d}.html",
+        "credit": "{credit|text}",
+        "link": "{permalink}",
         "require": {"media_type": "image"},
         "date": "{date}",
         "min_width": 1920,
@@ -74,7 +68,9 @@ DEFAULTS = {
     },
     "unsplash": {
         "url": "https://api.unsplash.com/photos/random"
-               "?orientation=landscape&client_id=PASTE_YOUR_ACCESS_KEY",
+               "?orientation=landscape&count=12"
+               "&client_id=PASTE_YOUR_ACCESS_KEY",
+        "list": ".",
         "image": "{urls.full}",
         "id": "{id}",
         "title": "{alt_description}",
@@ -95,13 +91,26 @@ DEFAULTS = {
 
 # One line each, shown beside the switch in the window. A source you add
 # yourself falls back to its host name, so this is not a registry -- it is
-# just the sentence the shipped five deserve.
+# just the sentence the shipped ones deserve.
 BLURBS = {
     "bing": "One curated photograph a day, titled and located.",
-    "wallhaven": "Community wallpapers. Its url is a raw query you can tune.",
     "apod": "NASA's astronomy picture of the day.",
     "wikipedia": "Wikipedia's picture of the day, fully credited.",
     "unsplash": "Needs a free access key pasted into its url first.",
+}
+
+
+# What wallhaven looked like when it shipped, so migrate() can tell a
+# stock body from one you rewrote before dropping the source entirely.
+_OLD_WALLHAVEN = {
+    "url": "https://wallhaven.cc/api/v1/search"
+           "?categories=100&purity=100&atleast=2560x1440"
+           "&sorting=toplist&topRange=1M",
+    "list": "data",
+    "image": "{path}",
+    "id": "{id}",
+    "credit": "wallhaven.cc",
+    "link": "https://wallhaven.cc/w/{id}",
 }
 
 
@@ -124,13 +133,15 @@ def config() -> dict:
 
 
 def ordered(cfg: dict) -> dict:
-    """Reading order, not alphabetical order: the list of sources first, then
-    each one's own settings in the order they are tried, then the sources you
-    could turn on, then anything you added yourself."""
+    """Reading order, not alphabetical order: the two name lists first, then
+    each source's own settings in the order they are used, then the rest of
+    the shipped ones, then anything you added yourself."""
     out = {}
-    if "sources" in cfg:
-        out["sources"] = cfg["sources"]
-    for name in list(cfg.get("sources") or []) + list(DEFAULTS):
+    for key in ("autofetch", "gallery"):
+        if key in cfg:
+            out[key] = cfg[key]
+    for name in list(cfg.get("autofetch") or []) \
+            + list(cfg.get("gallery") or []) + list(DEFAULTS):
         if isinstance(name, str) and name in cfg and name not in out:
             out[name] = cfg[name]
     for key, value in cfg.items():
@@ -171,9 +182,34 @@ def save_config(cfg: dict) -> None:
     tmp.replace(CONFIG)
 
 
+def _rewrite_lists(stored: dict) -> dict:
+    """Old `sources` meant "enabled for fetch". Morning is bing-only now;
+    the rest of what you had on becomes the elsewhere gallery."""
+    if "sources" not in stored:
+        return stored
+    if stored.get("wallhaven") == _OLD_WALLHAVEN:
+        stored.pop("wallhaven", None)
+    old = [name for name in (stored.pop("sources") or [])
+           if isinstance(name, str) and name != "wallhaven"]
+    body = {key: value for key, value in stored.items()
+            if isinstance(value, dict) and value.get("image")}
+    auto = [name for name in old if name == "bing"] or (
+        ["bing"] if body.get("bing") else [])
+    gallery: list[str] = []
+    for name in list(DEFAULTS.get("gallery") or []) + old:
+        if name in auto or name in gallery or name == "wallhaven":
+            continue
+        if body.get(name) or (name in DEFAULTS and name != "bing"):
+            gallery.append(name)
+    if auto:
+        stored["autofetch"] = auto
+    if gallery:
+        stored["gallery"] = gallery
+    return stored
+
+
 def migrate() -> None:
-    """liked/ was the old name for kept/, and an older config held a full copy
-    of every shipped source rather than your changes to them."""
+    """One-shot repairs for configs written by an older wallhelper."""
     if LEGACY_KEPT.is_dir() and not KEPT.exists():
         with contextlib.suppress(OSError):
             LEGACY_KEPT.rename(KEPT)
@@ -181,7 +217,14 @@ def migrate() -> None:
         stored = json.loads(CONFIG.read_text())
     except (OSError, json.JSONDecodeError, ValueError):
         return
-    if isinstance(stored, dict) and trim(stored) != stored:
+    if not isinstance(stored, dict):
+        return
+    rewritten = _rewrite_lists(json.loads(json.dumps(stored)))
+    if rewritten != stored:
+        with contextlib.suppress(OSError):
+            CONFIG.write_text(json.dumps(rewritten))
+        stored = rewritten
+    if trim(stored) != stored:
         with contextlib.suppress(OSError):
             save_config(config())
 
@@ -224,8 +267,16 @@ def apply_key(spec: dict, token: str, value: str) -> dict:
     return out
 
 
-def enabled() -> list[str]:
-    """The names in config["sources"] that actually describe a source."""
-    cfg = config()
-    return [name for name in (cfg.get("sources") or [])
+def _named(cfg: dict, key: str) -> list[str]:
+    return [name for name in (cfg.get(key) or [])
             if isinstance(cfg.get(name), dict) and cfg[name].get("image")]
+
+
+def autofetch_sources() -> list[str]:
+    """The morning list: names that actually describe a source."""
+    return _named(config(), "autofetch")
+
+
+def gallery_sources() -> list[str]:
+    """The elsewhere list: names that actually describe a source."""
+    return _named(config(), "gallery")

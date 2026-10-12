@@ -1,6 +1,11 @@
-{
-  "date": "2026-10-07",
-  "hdurl": "https://science.nasa.gov/wp-content/themes/nasa-child/assets/images/nasa-logo@2x.png",
-  "media_type": "image",
-  "title": "NASA Science"
-}
+[
+  {
+    "date": "2026-10-11",
+    "title": "Ice Fishing for Cosmic Neutrinos",
+    "permalink": "https://science.nasa.gov/image-article/apod-2026-october-11-ice-fishing-for-cosmic-neutrinos/",
+    "media_type": "image",
+    "hdurl": "https://assets.science.nasa.gov/dynamicimage/assets/science/cds/apod/apod/2026/october/deephole_icecube_4000.jpg?w=0&h=0&fit=clip&crop=faces%2Cfocalpoint",
+    "credit": "<a href=\"https://www.nsf.gov/\">NSF</a>, B. Gudbjartsson, <a href=\"https://icecube.wisc.edu/\">IceCube Collaboration</a>",
+    "url": "https://science.nasa.gov/image-article/apod-2026-october-11-ice-fishing-for-cosmic-neutrinos/"
+  }
+]

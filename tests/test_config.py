@@ -12,18 +12,18 @@ def setUpModule():
     guard()
 
 
-
 class Merge(unittest.TestCase):
     def setUp(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
         CONFIG.unlink(missing_ok=True)
 
     def test_no_file_means_defaults(self):
-        self.assertEqual(cfg.config()["sources"], cfg.DEFAULTS["sources"])
+        self.assertEqual(cfg.config()["autofetch"], cfg.DEFAULTS["autofetch"])
+        self.assertEqual(cfg.config()["gallery"], cfg.DEFAULTS["gallery"])
 
     def test_corrupt_file_means_defaults(self):
         CONFIG.write_text("{not json")
-        self.assertEqual(cfg.config()["sources"], cfg.DEFAULTS["sources"])
+        self.assertEqual(cfg.config()["autofetch"], cfg.DEFAULTS["autofetch"])
 
     def test_a_delta_merges_over_one_source(self):
         CONFIG.write_text(json.dumps({"bing": {"link": "https://example.com"}}))
@@ -46,10 +46,10 @@ class Trim(unittest.TestCase):
         self.assertEqual(cfg.trim(full),
                          {"bing": {"link": "https://example.com"}})
 
-    def test_the_source_list_is_stored_when_it_differs(self):
+    def test_the_name_lists_are_stored_when_they_differ(self):
         full = json.loads(json.dumps(cfg.DEFAULTS))
-        full["sources"] = ["bing"]
-        self.assertEqual(cfg.trim(full), {"sources": ["bing"]})
+        full["gallery"] = ["apod"]
+        self.assertEqual(cfg.trim(full), {"gallery": ["apod"]})
 
     def test_a_source_of_your_own_is_stored_whole(self):
         full = json.loads(json.dumps(cfg.DEFAULTS))
@@ -57,14 +57,51 @@ class Trim(unittest.TestCase):
         self.assertEqual(cfg.trim(full)["mine"], full["mine"])
 
 
-class Enabled(unittest.TestCase):
+class Named(unittest.TestCase):
     def setUp(self):
         CONFIG.unlink(missing_ok=True)
 
     def test_only_names_that_describe_a_source(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG.write_text(json.dumps({"sources": ["bing", "ghost"]}))
-        self.assertEqual(cfg.enabled(), ["bing"])
+        CONFIG.write_text(json.dumps({
+            "autofetch": ["bing", "ghost"],
+            "gallery": ["apod", "ghost"],
+        }))
+        self.assertEqual(cfg.autofetch_sources(), ["bing"])
+        self.assertEqual(cfg.gallery_sources(), ["apod"])
+
+
+class Migrate(unittest.TestCase):
+    def setUp(self):
+        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG.unlink(missing_ok=True)
+
+    def test_old_sources_becomes_autofetch_and_gallery(self):
+        CONFIG.write_text(json.dumps({
+            "sources": ["bing", "wallhaven", "apod"],
+            "wallhaven": cfg._OLD_WALLHAVEN,
+        }))
+        cfg.migrate()
+        stored = json.loads(CONFIG.read_text() or "{}")
+        merged = cfg.config()
+        self.assertEqual(merged["autofetch"], ["bing"])
+        self.assertEqual(merged["gallery"],
+                         ["apod", "wikipedia", "unsplash"])
+        self.assertNotIn("sources", stored)
+        self.assertNotIn("wallhaven", stored)
+        self.assertEqual(cfg.autofetch_sources(), ["bing"])
+
+    def test_a_rewritten_wallhaven_body_is_kept(self):
+        custom = {**cfg._OLD_WALLHAVEN, "url": "https://example.com/q"}
+        CONFIG.write_text(json.dumps({
+            "sources": ["bing", "wallhaven"],
+            "wallhaven": custom,
+        }))
+        cfg.migrate()
+        stored = json.loads(CONFIG.read_text())
+        self.assertEqual(stored.get("wallhaven"), custom)
+        self.assertEqual(cfg.autofetch_sources(), ["bing"])
+        self.assertNotIn("wallhaven", cfg.gallery_sources())
 
 
 class Keys(unittest.TestCase):

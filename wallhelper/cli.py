@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from .config import config, enabled, migrate
+from .config import autofetch_sources, config, migrate
 from .desktop import notify
 from .library import (
     collection,
@@ -40,7 +40,7 @@ def cmd_fetch(args) -> int:
               " (--next to pull another)")
         return 0
 
-    usable = enabled()
+    usable = autofetch_sources()
     if not usable:
         notify("Wallhelper", "no usable source is switched on", urgent=True)
         print("wallhelper: no usable source is switched on", file=sys.stderr)
