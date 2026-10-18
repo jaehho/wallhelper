@@ -1,5 +1,6 @@
 """Reading a photo off disk, and what the folder used to hold."""
 
+import io
 import struct
 import tempfile
 import unittest
@@ -50,6 +51,17 @@ class Stamp(unittest.TestCase):
         self.assertEqual(library.stamp("holiday.jpg"), ("", ""))
 
 
+def jpeg(width: int, height: int, *, cut_after: int | None = None) -> bytes:
+    """A JPEG header with some metadata ahead of the frame, which is where
+    the size is: SOI, APP0, SOF0. `cut_after` truncates it, as a ranged
+    download does."""
+    app0 = b"\xff\xe0" + struct.pack(">H", 16) + b"JFIF\x00" + bytes(9)
+    sof0 = (b"\xff\xc0" + struct.pack(">HBHHB", 11, 8, height, width, 1)
+            + bytes(3))
+    whole = b"\xff\xd8" + app0 + sof0
+    return whole if cut_after is None else whole[:cut_after]
+
+
 class Measure(unittest.TestCase):
     def setUp(self):
         DIR.mkdir(parents=True, exist_ok=True)
@@ -63,6 +75,25 @@ class Measure(unittest.TestCase):
         path = DIR / "notes.png"
         path.write_bytes(b"nope")
         self.assertIsNone(library.measure(path))
+
+
+class MeasureStream(unittest.TestCase):
+    def test_a_png_header_is_enough(self):
+        self.assertEqual(
+            library.measure_stream(io.BytesIO(png(1600, 900)[:33])),
+            (1600, 900))
+
+    def test_a_jpeg_is_measured_past_its_metadata(self):
+        self.assertEqual(library.measure_stream(io.BytesIO(jpeg(900, 1600))),
+                         (900, 1600))
+
+    def test_bytes_that_stop_short_of_the_size_say_nothing(self):
+        # The first bytes of a download that ends before the frame header.
+        self.assertIsNone(
+            library.measure_stream(io.BytesIO(jpeg(900, 1600, cut_after=26))))
+
+    def test_something_that_is_not_an_image_says_nothing(self):
+        self.assertIsNone(library.measure_stream(io.BytesIO(b"<html>")))
 
 
 class IsImage(unittest.TestCase):

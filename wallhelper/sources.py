@@ -10,22 +10,29 @@ from __future__ import annotations
 
 import contextlib
 import html
+import io
 import json
 import random
 import re
 import time
 import urllib.error
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import NamedTuple
 
 from .config import needs_setup
-from .library import measure, remember, slugify
-from .net import FetchError, describe, download, fetch_url
+from .library import measure, measure_stream, remember, slugify
+from .net import FetchError, describe, download, fetch_head, fetch_url
 from .paths import DIR
 
 _REPLACE_PAIR_LEN = 2
 _YYYYMMDD_LEN = 8
+# Where a JPEG keeps its size is after the metadata in front of it, which
+# the photographs these sources serve do not stretch past a few dozen KB.
+_HEAD_BYTES = 256 * 1024
+_SIZING_THREADS = 8
 
 
 def dig(data, path: str):
@@ -182,19 +189,73 @@ def list_source(_name: str, spec: dict, timeout: int = 30) -> Listing:
     return Listing(out, "" if out else "nothing to offer today")
 
 
+def _floor(spec: dict, key: str) -> float:
+    """A numeric demand of the source, 0 when it makes none."""
+    try:
+        return float(spec.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def refusal(spec: dict, size: tuple[int, int] | None) -> str:
     """Why a photograph of this size is not worth keeping from this source,
-    in a few words, or "" when it is. One too small to cover the screen is
-    worse than none."""
-    try:
-        floor = int(spec.get("min_width") or 0)
-    except (TypeError, ValueError):
-        floor = 0
-    if not floor:
+    in a few words, or "" when it is.
+
+    One too small to cover the screen is worse than none (`min_width`), and
+    so is one whose shape `cover` would crop to a strip: a square or a
+    portrait on a landscape screen (`min_aspect`, width over height).
+    """
+    narrowest, squarest = _floor(spec, "min_width"), _floor(spec, "min_aspect")
+    if not (narrowest or squarest):
         return ""
     if size is None:
         return "can't tell its size"
-    return f"too small: {size[0]} px" if size[0] < floor else ""
+    width, height = size
+    if width < narrowest:
+        return f"too small: {width} px"
+    if width < squarest * height:
+        return f"not wide enough: {width} \u00d7 {height}"
+    return ""
+
+
+def remote_size(url: str, timeout: int) -> tuple[int, int] | None:
+    """Width and height of the photograph at a URL, read from its first
+    bytes alone; None when those do not say. FetchError when they never
+    came."""
+    return measure_stream(io.BytesIO(fetch_head(url, _HEAD_BYTES, timeout)))
+
+
+def _refusal_at(spec: dict, url: str, timeout: int) -> str:
+    try:
+        return refusal(spec, remote_size(url, timeout))
+    except FetchError:
+        # Not knowing is not a reason: the tile and the click will say
+        # what is wrong with a URL that does not answer.
+        return ""
+
+
+def offer_source(name: str, spec: dict, timeout: int = 30) -> Listing:
+    """What the gallery shows from one source: list_source, less every
+    candidate that adopt would refuse for its size once downloaded.
+
+    Only the first bytes of each are fetched to find out, and only when the
+    source states a size it needs, so a source without one costs nothing
+    more than its listing.
+    """
+    listing = list_source(name, spec, timeout)
+    if not listing.candidates or not (
+            _floor(spec, "min_width") or _floor(spec, "min_aspect")):
+        return listing
+
+    with ThreadPoolExecutor(max_workers=_SIZING_THREADS) as pool:
+        refusals = list(pool.map(
+            partial(_refusal_at, spec, timeout=timeout),
+            [cand["image"] for cand in listing.candidates]))
+    fitting = [cand for cand, why in zip(listing.candidates, refusals,
+                                         strict=True) if not why]
+    if fitting:
+        return Listing(fitting, "")
+    return Listing([], f"nothing fits today ({refusals[0]})")
 
 
 def adopt(name: str, spec: dict, cand: dict) -> Path:

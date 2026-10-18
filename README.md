@@ -68,6 +68,7 @@ an array, and a string with no braces is used as-is.
 | `replace` | `["pattern", "with"]` — a regex over the image URL |
 | `headers` | extra request headers |
 | `min_width` | skip anything narrower than this |
+| `min_aspect` | skip anything below this width ÷ height; `1.3` drops squares and portraits |
 | `key` | `{"get": url, "note": text, "into": placeholder}` — see below |
 
 Filters in a template: `|name` (after the last `/` or `:`), `|stem` (without

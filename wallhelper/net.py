@@ -20,6 +20,9 @@ UA = "wallhelper/1.0"
 # already there stays one escape.
 _URL_SAFE = "%:/?#[]@!$&'()*+,;=~"
 _BLURB_LIMIT = 70
+# What a request can fail with. URLError and TimeoutError are OSErrors
+# already; ValueError is a URL that cannot be sent.
+_FAILURES = (urllib.error.URLError, OSError, TimeoutError, ValueError)
 
 
 class FetchError(Exception):
@@ -52,13 +55,26 @@ def ascii_url(url: str) -> str:
 
 
 def fetch_url(url: str, timeout: int = 30,
-              headers: dict | None = None) -> bytes:
+              headers: dict | None = None,
+              limit: int | None = None) -> bytes:
+    """The reply body, or only its first `limit` bytes."""
     sent = {"User-Agent": UA}
     if isinstance(headers, dict):
         sent.update({str(k): str(v) for k, v in headers.items()})
     req = urllib.request.Request(ascii_url(url), headers=sent)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+        return resp.read(limit)
+
+
+def fetch_head(url: str, limit: int, timeout: int) -> bytes:
+    """The first `limit` bytes of a file, which is where an image keeps its
+    size. Asks for just those, and stops reading at them either way.
+    FetchError, saying why, when they do not come."""
+    try:
+        return fetch_url(url, timeout=timeout, limit=limit,
+                         headers={"Range": f"bytes=0-{limit - 1}"})
+    except _FAILURES as err:
+        raise FetchError(describe(err)) from err
 
 
 def download(url: str, dest: Path) -> None:
@@ -77,7 +93,7 @@ def download(url: str, dest: Path) -> None:
         tmp.write_bytes(data)
         tmp.chmod(0o644)           # mktemp-style 0600 would be odd here
         tmp.replace(dest)
-    except (urllib.error.URLError, OSError, TimeoutError, ValueError) as err:
+    except _FAILURES as err:
         raise FetchError(describe(err)) from err
     finally:
         tmp.unlink(missing_ok=True)

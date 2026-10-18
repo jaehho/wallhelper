@@ -56,6 +56,9 @@ DEFAULTS = {
         "require": {"media_type": "image"},
         "date": "{date}",
         "min_width": 1920,
+        # A square or a portrait would be cropped to a strip. 1.3 is a
+        # little under 4:3.
+        "min_aspect": 1.3,
     },
     "wikipedia": {
         "url": "https://en.wikipedia.org/api/rest_v1/feed/featured"

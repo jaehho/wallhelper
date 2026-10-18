@@ -13,7 +13,7 @@ import struct
 import subprocess
 import unicodedata
 from pathlib import Path
-from typing import NamedTuple
+from typing import BinaryIO, NamedTuple
 
 from .desktop import active, focused_monitor, push_wallpaper
 from .paths import CREDITS, CURRENT, DIR, IMAGE_SUFFIXES, THUMBS
@@ -191,23 +191,32 @@ def measure(path: Path) -> tuple[int, int] | None:
     """
     try:
         with path.open("rb") as handle:
-            head = handle.read(26)
-            if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
-                width, height = struct.unpack(">II", head[16:24])
-                return int(width), int(height)
-            if head[:2] != b"\xff\xd8":
+            return measure_stream(handle)
+    except OSError:
+        return None
+
+
+def measure_stream(handle: BinaryIO) -> tuple[int, int] | None:
+    """measure() for anything seekable, such as the first bytes of a file
+    that is still a URL. None when they do not reach the size."""
+    try:
+        head = handle.read(26)
+        if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+            width, height = struct.unpack(">II", head[16:24])
+            return int(width), int(height)
+        if head[:2] != b"\xff\xd8":
+            return None
+        handle.seek(2)
+        while True:
+            marker = handle.read(2)
+            if len(marker) < _JPEG_MARKER_LEN or marker[0] != _JPEG_MARKER_PREFIX:
                 return None
-            handle.seek(2)
-            while True:
-                marker = handle.read(2)
-                if len(marker) < _JPEG_MARKER_LEN or marker[0] != _JPEG_MARKER_PREFIX:
-                    return None
-                length = struct.unpack(">H", handle.read(2))[0]
-                if (_JPEG_SOF_LO <= marker[1] <= _JPEG_SOF_HI
-                        and marker[1] not in _JPEG_SOF_SKIP):
-                    height, width = struct.unpack(">HH", handle.read(5)[1:5])
-                    return int(width), int(height)
-                handle.seek(length - 2, 1)
+            length = struct.unpack(">H", handle.read(2))[0]
+            if (_JPEG_SOF_LO <= marker[1] <= _JPEG_SOF_HI
+                    and marker[1] not in _JPEG_SOF_SKIP):
+                height, width = struct.unpack(">HH", handle.read(5)[1:5])
+                return int(width), int(height)
+            handle.seek(length - 2, 1)
     except (OSError, struct.error, ValueError, IndexError):
         return None
 

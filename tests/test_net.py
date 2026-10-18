@@ -13,7 +13,14 @@ from pathlib import Path
 
 from tests import guard
 from tests.test_sources import png
-from wallhelper.net import FetchError, ascii_url, download, fetch_url
+from wallhelper import sources
+from wallhelper.net import (
+    FetchError,
+    ascii_url,
+    download,
+    fetch_head,
+    fetch_url,
+)
 from wallhelper.paths import DIR
 
 
@@ -24,12 +31,14 @@ def setUpModule():
 @contextlib.contextmanager
 def serving(replies: dict[str, tuple[int, bytes]]):
     """A server answering by decoded path; yields (base URL, paths asked
-    for, as they arrived on the wire)."""
+    for as they arrived on the wire, the Range header of each)."""
     asked: list[str] = []
+    ranges: list[str | None] = []
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             asked.append(self.path)
+            ranges.append(self.headers.get("Range"))
             status, body = replies.get(urllib.parse.unquote(self.path),
                                        (404, b""))
             self.send_response(status)
@@ -45,7 +54,7 @@ def serving(replies: dict[str, tuple[int, bytes]]):
         target=server.serve_forever, args=(0.01,), daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_address[1]}", asked
+        yield f"http://127.0.0.1:{server.server_address[1]}", asked, ranges
     finally:
         server.shutdown()
         server.server_close()
@@ -69,7 +78,7 @@ class AsciiUrl(unittest.TestCase):
 class Fetch(unittest.TestCase):
     def test_a_non_ascii_path_reaches_the_server_as_utf8(self):
         name = "/2026_10_10_PZ_Jesličky_01_1500px.png"
-        with serving({name: (200, b"bytes")}) as (base, asked):
+        with serving({name: (200, b"bytes")}) as (base, asked, _ranges):
             self.assertEqual(fetch_url(base + name), b"bytes")
         self.assertEqual(asked, ["/2026_10_10_PZ_Jesli%C4%8Dky_01_1500px.png"])
 
@@ -82,28 +91,49 @@ class Download(unittest.TestCase):
 
     def test_a_non_ascii_url_downloads(self):
         name = "/Jesličky.png"
-        with serving({name: (200, png(8, 8))}) as (base, _asked):
+        with serving({name: (200, png(8, 8))}) as (base, _asked, _ranges):
             download(base + name, self.dest)
         self.assertTrue(self.dest.read_bytes().startswith(b"\x89PNG"))
 
     def test_the_servers_words_are_the_reason(self):
-        with serving({"/key.png": (401, b"")}) as (base, _asked), \
+        with serving({"/key.png": (401, b"")}) as (base, _a, _r), \
              self.assertRaisesRegex(FetchError, "Unauthorized"):
             download(base + "/key.png", self.dest)
         self.assertFalse(self.dest.exists())
 
     def test_something_that_is_not_an_image_is_refused_and_not_kept(self):
-        with serving({"/page.png": (200, b"<html>")}) as (base, _asked), \
+        with serving({"/page.png": (200, b"<html>")}) as (base, _a, _r), \
              self.assertRaisesRegex(FetchError, "not an image"):
             download(base + "/page.png", self.dest)
         self.assertFalse(self.dest.exists())
         self.assertEqual([p.name for p in Path(DIR).glob(".fetch-*")], [])
 
     def test_an_empty_reply_is_refused(self):
-        with serving({"/e.png": (200, b"")}) as (base, _asked), \
+        with serving({"/e.png": (200, b"")}) as (base, _a, _r), \
              self.assertRaisesRegex(FetchError, "empty"):
             download(base + "/e.png", self.dest)
 
     def test_a_url_that_is_not_one_is_a_reason_not_a_crash(self):
         with self.assertRaises(FetchError):
             download("not a url", self.dest)
+
+
+class Head(unittest.TestCase):
+    BODY = bytes(range(256)) * 4
+
+    def test_only_the_first_bytes_are_asked_for_and_read(self):
+        # A server that ignores Range sends the lot; the read still stops.
+        with serving({"/f.png": (200, self.BODY)}) as (base, _a, ranges):
+            self.assertEqual(fetch_head(base + "/f.png", 16, 5),
+                             self.BODY[:16])
+        self.assertEqual(ranges, ["bytes=0-15"])
+
+    def test_a_file_that_is_not_there_is_a_reason(self):
+        with serving({}) as (base, _a, _r), \
+             self.assertRaisesRegex(FetchError, "Not Found"):
+            fetch_head(base + "/no.png", 16, 5)
+
+    def test_remote_size_reads_a_png_without_the_rest_of_it(self):
+        with serving({"/f.png": (200, png(2160, 3840))}) as (base, _a, _r):
+            self.assertEqual(sources.remote_size(base + "/f.png", 5),
+                             (2160, 3840))

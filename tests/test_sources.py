@@ -11,6 +11,7 @@ import unittest
 import urllib.error
 import zlib
 from pathlib import Path
+from typing import ClassVar
 from unittest import mock
 
 from tests import guard
@@ -420,3 +421,129 @@ class Adopt(Source):
             out = sources.fetch_source(
                 "test", {**spec, "url": "https://e.com"})
         self.assertIsNotNone(out)
+
+
+class Refusal(unittest.TestCase):
+    def test_a_source_with_no_demands_refuses_nothing(self):
+        self.assertEqual(sources.refusal({}, (10, 10000)), "")
+        self.assertEqual(sources.refusal({}, None), "")
+
+    def test_under_the_floor_says_how_wide_it_was(self):
+        spec = {"min_width": 1920}
+        self.assertEqual(sources.refusal(spec, (1600, 900)),
+                         "too small: 1600 px")
+        self.assertEqual(sources.refusal(spec, (1920, 1080)), "")
+
+    def test_a_portrait_and_a_square_are_not_wide_enough(self):
+        spec = {"min_aspect": 1.3}
+        self.assertEqual(sources.refusal(spec, (2160, 3840)),
+                         "not wide enough: 2160 \u00d7 3840")
+        self.assertEqual(sources.refusal(spec, (1600, 1600)),
+                         "not wide enough: 1600 \u00d7 1600")
+
+    def test_four_by_three_and_wider_pass(self):
+        spec = {"min_aspect": 1.3}
+        for size in ((1600, 1200), (1920, 1080), (5000, 1000)):
+            self.assertEqual(sources.refusal(spec, size), "")
+
+    def test_the_floor_is_read_first(self):
+        self.assertEqual(
+            sources.refusal({"min_width": 1920, "min_aspect": 1.3},
+                            (900, 1600)),
+            "too small: 900 px")
+
+    def test_a_size_nobody_could_read_is_refused_when_one_is_demanded(self):
+        self.assertEqual(sources.refusal({"min_width": 1920}, None),
+                         "can't tell its size")
+
+    def test_a_demand_that_is_not_a_number_is_no_demand(self):
+        self.assertEqual(
+            sources.refusal({"min_width": "wide", "min_aspect": None},
+                            (10, 10)), "")
+
+
+class Offer(Source):
+    """The gallery's list: what list_source finds, less what adopt would
+    refuse for its size. Sizes are canned; the head fetch is tested in
+    test_net."""
+
+    SPEC: ClassVar[dict] = {
+        "url": "https://example.com/api", "list": ".", "image": "{p}",
+        "min_width": 1920, "min_aspect": 1.3}
+
+    def offer(self, spec, sizes):
+        reply = json.dumps([{"p": url} for url in sizes]).encode()
+
+        def size_of(url, _timeout):
+            answer = sizes[url]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        with mock.patch.object(sources, "fetch_url", return_value=reply), \
+             mock.patch.object(sources, "remote_size",
+                               side_effect=size_of) as asked:
+            return sources.offer_source("test", spec), asked
+
+    def test_small_and_portrait_and_square_are_not_offered(self):
+        got, _asked = self.offer(self.SPEC, {
+            "https://e.com/ok.jpg": (2560, 1440),
+            "https://e.com/small.jpg": (1600, 900),
+            "https://e.com/tall.jpg": (2160, 3840),
+            "https://e.com/square.jpg": (2000, 2000),
+        })
+        self.assertEqual([c["image"] for c in got.candidates],
+                         ["https://e.com/ok.jpg"])
+        self.assertEqual(got.complaint, "")
+
+    def test_order_is_the_sources_order(self):
+        got, _asked = self.offer(self.SPEC, {
+            f"https://e.com/{n}.jpg": (2560, 1440) for n in "cab"})
+        self.assertEqual([c["image"][-5] for c in got.candidates],
+                         ["c", "a", "b"])
+
+    def test_nothing_fitting_says_why_for_the_first(self):
+        got, _asked = self.offer(self.SPEC, {
+            "https://e.com/small.jpg": (1600, 900),
+            "https://e.com/tall.jpg": (2160, 3840),
+        })
+        self.assertEqual(got, ([], "nothing fits today (too small: 1600 px)"))
+
+    def test_a_url_that_does_not_answer_is_still_offered(self):
+        # Not knowing is not a reason; the click will say what is wrong.
+        got, _asked = self.offer(self.SPEC, {
+            "https://e.com/slow.jpg": FetchError("timed out"),
+            "https://e.com/small.jpg": (1600, 900),
+        })
+        self.assertEqual([c["image"] for c in got.candidates],
+                         ["https://e.com/slow.jpg"])
+
+    def test_a_size_that_cannot_be_read_is_not_offered(self):
+        # adopt would refuse it for the same reason after downloading it.
+        got, _asked = self.offer(self.SPEC, {"https://e.com/odd.webp": None})
+        self.assertEqual(got.candidates, [])
+
+    def test_a_source_that_asks_for_no_size_costs_no_requests(self):
+        got, asked = self.offer({**self.SPEC, "min_width": 0,
+                                 "min_aspect": 0},
+                                {"https://e.com/a.jpg": (10, 10)})
+        asked.assert_not_called()
+        self.assertEqual(len(got.candidates), 1)
+
+    def test_a_source_that_failed_to_list_is_passed_through(self):
+        with mock.patch.object(
+                sources, "fetch_url",
+                side_effect=urllib.error.URLError("timed out")):
+            got = sources.offer_source("test", self.SPEC)
+        self.assertEqual(got, ([], "timed out"))
+
+
+class AdoptShape(Source):
+    def test_a_square_is_refused_where_the_source_wants_wide_ones(self):
+        def square(_url, out: Path) -> None:
+            out.write_bytes(png(1600, 1600))
+        with mock.patch.object(sources, "download", side_effect=square), \
+             self.assertRaisesRegex(FetchError, "not wide enough"):
+            sources.adopt("test", {"min_aspect": 1.3}, {
+                "image": "https://example.com/s.jpg", "ident": "s",
+                "date": "20261005"})
+        self.assertEqual(list(DIR.glob("*.jpg")), [])

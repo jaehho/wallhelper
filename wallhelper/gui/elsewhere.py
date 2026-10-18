@@ -17,7 +17,7 @@ import gi
 
 from ..config import config, gallery_sources
 from ..net import FetchError, describe
-from ..sources import Listing, adopt, list_source
+from ..sources import Listing, adopt, offer_source
 from .style import GRID_H, GRID_W, LONG_TOAST_SECONDS, THUMB_H, THUMB_W
 from .thumbs import remote_thumbnail
 
@@ -109,7 +109,7 @@ class ElsewhereBar(Gtk.Box):
 
     def _ask(self, generation, position, name, spec):
         try:
-            listing = list_source(name, spec, timeout=SOURCE_TIMEOUT_S)
+            listing = offer_source(name, spec, timeout=SOURCE_TIMEOUT_S)
         except Exception as err:     # one bad source must not stop the rest
             listing = Listing([], describe(err))
         GLib.idle_add(self._arrive, generation, position, name, listing)
