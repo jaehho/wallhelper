@@ -118,6 +118,13 @@ def stylesheet(colors: dict[str, str]) -> str:
         letter-spacing: 1.5px; color: {colors['overlay2']};
     }}
 
+    /* A source with nothing to show, and why: quieter than the label it
+       sits under, and not coloured like an alarm. */
+    .elsewhere-note {{
+        font-family: {DATA}; font-size: 10px; font-weight: 400;
+        letter-spacing: 1.2px; color: {colors['overlay2']};
+    }}
+
     .close-btn {{
         background: alpha({colors['crust']}, 0.55); color: {colors['text']};
         border: none; box-shadow: none;

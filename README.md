@@ -92,6 +92,12 @@ A source needing an API key declares where to get one, and the panel then offers
 the signup link and a box to paste into; the key goes wherever the placeholder
 appears, whether that is a query argument or a header.
 
+Elsewhere asks every `gallery` source at once and paints each as it answers,
+waiting no more than eight seconds on any. A source that is down, slow, or
+still holding its key placeholder gets a muted line under the row in place of
+silence (`UNSPLASH — needs a key`, `APOD — timed out`, `DENIED —
+Unauthorized`), and a placeholder is never sent to the API.
+
 Your changes live in `~/.config/wallhelper/config.json`, and only your changes —
 the shipped sources stay shipped, so they keep improving.
 

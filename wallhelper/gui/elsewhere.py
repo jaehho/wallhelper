@@ -3,6 +3,10 @@
 A short row of thumbs sits above the collection. MORE opens the full
 gallery. Choosing one saves it into the collection and makes it the
 wallpaper -- one action, because that is the only reason you are here.
+
+Each source is asked on its own thread and paints when it answers, so a
+slow one holds back nobody; one that has nothing to show says why in a
+line under the row, in place of the silence a bare label would be.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ import gi
 
 from ..config import config, gallery_sources
 from ..net import FetchError, describe
-from ..sources import adopt, list_source
+from ..sources import Listing, adopt, list_source
 from .style import GRID_H, GRID_W, LONG_TOAST_SECONDS, THUMB_H, THUMB_W
 from .thumbs import remote_thumbnail
 
@@ -22,6 +26,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 ROW_LIMIT = 8
+SOURCE_TIMEOUT_S = 8      # a source slower than this is a source down
 
 
 class ElsewhereBar(Gtk.Box):
@@ -33,6 +38,11 @@ class ElsewhereBar(Gtk.Box):
         self.on_toast = on_toast
         self.cands: list[dict] = []
         self.expanded = False
+        self.generation = 0        # a reload invalidates the one before
+        self.answers: dict[int, tuple[str, Listing]] = {}
+        # Built once per candidate and size: painting again, as the next
+        # source answers, must not start the downloads over.
+        self.tiles: dict[tuple[str, str, int], Gtk.Button] = {}
 
         head = Gtk.Box(spacing=14, valign=Gtk.Align.CENTER)
         self.append(head)
@@ -51,6 +61,11 @@ class ElsewhereBar(Gtk.Box):
         self.more_btn.set_cursor(self.pointer)
         self.more_btn.connect("clicked", lambda _b: self.toggle())
         head.append(self.more_btn)
+
+        # One muted line per source that has nothing to show, and why.
+        self.notes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                             spacing=2, margin_top=4, visible=False)
+        self.append(self.notes)
 
         self.full = Gtk.FlowBox(
             valign=Gtk.Align.START, max_children_per_line=6,
@@ -72,42 +87,71 @@ class ElsewhereBar(Gtk.Box):
         self.more_btn.set_label("LESS" if self.expanded else "MORE")
 
     def reload(self):
-        """List every gallery source off the main loop, then paint."""
+        """Ask every gallery source at once, off the main loop, and paint
+        each one as it answers. What was on show stays until the first
+        new answer, so a reload after saving does not blank the row."""
         names = gallery_sources()
         self.set_visible(bool(names))
+        self.generation += 1
+        self.answers = {}
+        self.tiles = {}
         if not names:
+            self._show()
             return
 
-        def work():
-            cfg = config()
-            found: list[dict] = []
-            for name in names:
-                try:
-                    cands = list_source(name, cfg.get(name) or {})
-                except Exception:  # one bad source must not kill the row
-                    continue
-                for cand in cands:
-                    cand["name"] = name
-                found.extend(cands)
-            GLib.idle_add(self._show, found)
+        cfg = config()
+        for position, name in enumerate(names):
+            threading.Thread(
+                target=self._ask,
+                args=(self.generation, position, name, cfg.get(name) or {}),
+                daemon=True,
+            ).start()
 
-        threading.Thread(target=work, daemon=True).start()
+    def _ask(self, generation, position, name, spec):
+        try:
+            listing = list_source(name, spec, timeout=SOURCE_TIMEOUT_S)
+        except Exception as err:     # one bad source must not stop the rest
+            listing = Listing([], describe(err))
+        GLib.idle_add(self._arrive, generation, position, name, listing)
 
-    def _show(self, cands):
-        self.cands = cands
-        while (child := self.row.get_first_child()) is not None:
-            self.row.remove(child)
-        while (child := self.full.get_first_child()) is not None:
-            self.full.remove(child)
-
-        for cand in cands[:ROW_LIMIT]:
-            self.row.append(self.tile(cand, THUMB_W, THUMB_H))
-        for cand in cands:
-            self.full.append(self.tile(cand, GRID_W, GRID_H))
-        self.more_btn.set_visible(len(cands) > ROW_LIMIT)
+    def _arrive(self, generation, position, name, listing):
+        if generation == self.generation:      # not a reload ago
+            for cand in listing.candidates:
+                cand["name"] = name
+            self.answers[position] = (name, listing)
+            self._show()
         return False
 
+    def _show(self):
+        """Paint what has answered, in the order the sources are listed."""
+        answered = [self.answers[spot] for spot in sorted(self.answers)]
+        self.cands = [cand for _name, listing in answered
+                      for cand in listing.candidates]
+        for box in (self.row, self.full, self.notes):
+            while (child := box.get_first_child()) is not None:
+                box.remove(child)
+
+        for cand in self.cands[:ROW_LIMIT]:
+            self.row.append(self.tile(cand, THUMB_W, THUMB_H))
+        for cand in self.cands:
+            self.full.append(self.tile(cand, GRID_W, GRID_H))
+        self.more_btn.set_visible(len(self.cands) > ROW_LIMIT)
+
+        for name, listing in answered:
+            if listing.complaint:
+                note = Gtk.Label(label=f"{name.upper()} — {listing.complaint}",
+                                 xalign=0)
+                note.add_css_class("elsewhere-note")
+                self.notes.append(note)
+        self.notes.set_visible(self.notes.get_first_child() is not None)
+
     def tile(self, cand: dict, wide: int, high: int) -> Gtk.Button:
+        key = (cand["name"], cand["image"], wide)
+        if key not in self.tiles:
+            self.tiles[key] = self._new_tile(cand, wide, high)
+        return self.tiles[key]
+
+    def _new_tile(self, cand: dict, wide: int, high: int) -> Gtk.Button:
         pic = Gtk.Picture(
             content_fit=Gtk.ContentFit.COVER,
             width_request=wide, height_request=high,

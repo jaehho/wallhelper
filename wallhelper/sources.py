@@ -17,7 +17,9 @@ import time
 import urllib.error
 import urllib.parse
 from pathlib import Path
+from typing import NamedTuple
 
+from .config import needs_setup
 from .library import measure, remember, slugify
 from .net import FetchError, describe, download, fetch_url
 from .paths import DIR
@@ -119,16 +121,29 @@ def _resolve(spec: dict, timeout: int = 30) -> tuple[list | None, str]:
     return [document], ""
 
 
-def list_source(_name: str, spec: dict) -> list[dict]:
+class Listing(NamedTuple):
+    """What one source has to offer today."""
+
+    candidates: list[dict]
+    complaint: str     # why there are none, in a line; "" when there are
+
+
+def list_source(_name: str, spec: dict, timeout: int = 30) -> Listing:
     """Every usable entry from one source today. Nothing is downloaded.
 
-    Each answer is a filled candidate -- image, title, credit, link, date,
-    ident -- after `require` and `replace` have been applied, so the gallery
-    never offers a thumb it could not later adopt.
+    Each candidate is filled -- image, title, credit, link, date, ident --
+    after `require` and `replace` have been applied, so the gallery never
+    offers a thumb it could not later adopt. A source with nothing to offer
+    says why in the complaint.
+
+    A source still holding its key placeholder is not asked: the request
+    would carry the placeholder to the API as if it were a key.
     """
-    entries, _complaint = _resolve(spec)
+    if needs_setup(spec):
+        return Listing([], "needs a key")
+    entries, complaint = _resolve(spec, timeout)
     if entries is None:
-        return []
+        return Listing([], complaint)
 
     demands = spec.get("require")
     demands = demands if isinstance(demands, dict) else {}
@@ -164,7 +179,7 @@ def list_source(_name: str, spec: dict) -> list[dict]:
             "date": fill(spec.get("date"), entry),
             "ident": ident,
         })
-    return out
+    return Listing(out, "" if out else "nothing to offer today")
 
 
 def refusal(spec: dict, size: tuple[int, int] | None) -> str:
@@ -220,7 +235,7 @@ def fetch_source(name: str, spec: dict) -> Path | None:
     That covers every shipped one and, more to the point, the next one --
     adding a source is writing an object, not editing this file.
     """
-    cands = list_source(name, spec)
+    cands = list_source(name, spec).candidates
     if not cands:
         return None
 

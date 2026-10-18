@@ -238,13 +238,17 @@ class Probe(Source):
 
 
 class ListSource(Source):
-    def list(self, spec, reply):
+    def listing(self, spec, reply=None, error=None):
         document = reply if isinstance(reply, bytes) \
             else json.dumps(reply).encode()
         with mock.patch.object(sources, "fetch_url",
-                               return_value=document), \
+                               return_value=document,
+                               side_effect=error), \
              mock.patch.object(sources, "download", side_effect=save):
             return sources.list_source("test", spec)
+
+    def list(self, spec, reply):
+        return self.listing(spec, reply).candidates
 
     def test_every_usable_entry_comes_back(self):
         out = self.list({
@@ -291,6 +295,55 @@ class ListSource(Source):
         }, {"path": "https://example.com/a.jpg", "id": "a",
             "credit": "<b>Someone</b>"})
         self.assertEqual(out[0]["credit"], "Someone")
+
+    def test_a_source_that_answers_has_no_complaint(self):
+        self.assertEqual(
+            self.listing({"url": "https://example.com/api", "image": "{p}"},
+                         {"p": "https://e.com/a.jpg"}).complaint, "")
+
+    def test_a_source_that_cannot_be_reached_says_why(self):
+        got = self.listing(
+            {"url": "https://example.com/api", "image": "{p}"},
+            error=urllib.error.URLError("Unauthorized"))
+        self.assertEqual(got, ([], "Unauthorized"))
+
+    def test_a_timeout_says_so(self):
+        got = self.listing({"url": "https://example.com/api", "image": "{p}"},
+                           error=TimeoutError("timed out"))
+        self.assertEqual(got.complaint, "timed out")
+
+    def test_a_reply_that_is_not_json_says_so(self):
+        got = self.listing({"url": "https://example.com/api", "image": "{p}"},
+                           b"<html>")
+        self.assertEqual(got.complaint, "the reply is not JSON")
+
+    def test_nothing_matching_require_says_so(self):
+        got = self.listing({"url": "https://example.com/api",
+                            "list": "data", "image": "{p}",
+                            "require": {"media_type": "image"}},
+                           {"data": [{"p": "/v", "media_type": "video"}]})
+        self.assertEqual(got, ([], "nothing to offer today"))
+
+    def test_a_source_waiting_on_its_key_is_not_asked(self):
+        spec = {"url": "https://api.example.com/x?client_id=PASTE_KEY",
+                "image": "{p}", "key": {"into": "PASTE_KEY"}}
+        with mock.patch.object(sources, "fetch_url") as asked:
+            got = sources.list_source("test", spec)
+        asked.assert_not_called()
+        self.assertEqual(got, ([], "needs a key"))
+
+    def test_a_source_given_its_key_is_asked(self):
+        spec = {"url": "https://api.example.com/x?client_id=abc123",
+                "image": "{p}", "key": {"into": "PASTE_KEY"}}
+        got = self.listing(spec, {"p": "https://e.com/a.jpg"})
+        self.assertEqual(len(got.candidates), 1)
+
+    def test_the_timeout_reaches_the_request(self):
+        with mock.patch.object(sources, "fetch_url",
+                               return_value=b"{}") as asked:
+            sources.list_source(
+                "test", {"url": "https://e.com", "image": "{p}"}, timeout=8)
+        self.assertEqual(asked.call_args.kwargs["timeout"], 8)
 
     def test_listing_never_downloads(self):
         with mock.patch.object(sources, "fetch_url",
