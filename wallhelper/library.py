@@ -70,6 +70,7 @@ _JPEG_SOF_SKIP = (0xC4, 0xC8, 0xCC)
 _YYYYMMDD_LEN = 8
 _WEBP_HEAD_LEN = 12            # "RIFF", a size, "WEBP"
 _ORIG_PATH = "trash::orig-path="
+_GIO_TIMEOUT_S = 15
 # What gui.thumbs writes: '<photo>-<w>x<h>.png'.
 _CACHE_NAME = re.compile(r"(?P<photo>.+)-\d+x\d+\.png")
 
@@ -316,6 +317,16 @@ class Deleted(NamedTuple):
     how: str          # TRASHED, or UNLINKED when the wastebasket refused
 
 
+def _gio(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run gio. OSError when it cannot be run or does not answer in time;
+    a non-zero exit is for the caller to read."""
+    try:
+        return subprocess.run(["gio", *args], capture_output=True,
+                              text=True, timeout=_GIO_TIMEOUT_S, check=False)
+    except subprocess.SubprocessError as err:
+        raise OSError(str(err)) from err
+
+
 def trash(path: Path) -> str:
     """Send to the desktop wastebasket, not unlink. Says which happened.
 
@@ -332,9 +343,8 @@ def trash(path: Path) -> str:
         msg = f"{path} is outside the collection ({DIR}), so not deleting it"
         raise ValueError(msg)
     try:
-        done = subprocess.run(["gio", "trash", str(path)],
-                              capture_output=True, timeout=15, check=False)
-    except (OSError, subprocess.SubprocessError):
+        done = _gio("trash", str(path))
+    except OSError:
         pass
     else:
         if done.returncode == 0:
@@ -367,17 +377,36 @@ def in_trash() -> list[Trashed]:
 
     That is not an empty Trash, and whoever would act on "nothing there"
     must not take it for one."""
-    try:
-        done = subprocess.run(
-            ["gio", "list", "-u", "-a",
-             "trash::orig-path,trash::deletion-date", "trash:///"],
-            capture_output=True, text=True, timeout=15, check=False)
-    except subprocess.SubprocessError as err:
-        raise OSError(str(err)) from err
+    done = _gio("list", "-u", "-a", "trash::orig-path,trash::deletion-date",
+                "trash:///")
     if done.returncode != 0:
         msg = done.stderr.strip() or "gio could not list the Trash"
         raise OSError(msg)
     return parse_trash(done.stdout)
+
+
+def restore(path: Path) -> None:
+    """Put a photograph back where it was, out of the Trash. OSError when
+    the Trash does not have it or gio will not give it up.
+
+    If it was trashed more than once, the latest comes back. Its ledger
+    line and thumbnails never left (see prune), so it returns captioned."""
+    here = [entry for entry in in_trash() if _same_place(entry.was, path)]
+    if not here:
+        msg = f"{path.name} is not in the Trash"
+        raise FileNotFoundError(msg)
+    latest = sorted(here, key=lambda entry: entry.when)[-1]
+    done = _gio("trash", "--restore", latest.uri)
+    if done.returncode != 0:
+        msg = done.stderr.strip() or f"gio could not restore {path.name}"
+        raise OSError(msg)
+    # gvfs's view of the Trash goes stale for a restored name: trash the
+    # photograph again and `gio list` never shows it, nor will --restore
+    # find it, until something lists the Trash once more. Measured with a
+    # private gvfsd-trash: five restore/trash cycles list correctly with
+    # this line, and the second cycle fails without it.
+    with contextlib.suppress(OSError):
+        in_trash()
 
 
 def cache_owner(cached: str) -> str | None:
@@ -391,6 +420,13 @@ def cache_owner(cached: str) -> str | None:
     return photo if Path(photo).suffix.lower() in IMAGE_SUFFIXES else None
 
 
+def _same_place(one: Path, other: Path) -> bool:
+    """Same name in the same folder, folders taken with symlinks followed
+    (the file itself may be gone)."""
+    return (one.name == other.name
+            and one.parent.resolve() == other.parent.resolve())
+
+
 def names_in_trash(entries: list[Trashed], folder: Path = DIR) -> set[str]:
     """Filenames of the entries that were trashed out of `folder`."""
     where = folder.resolve()
@@ -398,15 +434,15 @@ def names_in_trash(entries: list[Trashed], folder: Path = DIR) -> set[str]:
             if entry.was.parent.resolve() == where}
 
 
-def _is_gone(name: str, trashed: set[str]) -> bool:
-    return name not in trashed and not (DIR / name).exists()
+def _is_gone(name: str, present: set[str], trashed: set[str]) -> bool:
+    return name not in present and name not in trashed
 
 
-def _prune_ledger(trashed: set[str]) -> None:
+def _prune_ledger(present: set[str], trashed: set[str]) -> None:
     try:
         lines = CREDITS.read_text().splitlines()
         kept = [line for line in lines
-                if not _is_gone(line.split("\t")[0], trashed)]
+                if not _is_gone(line.split("\t")[0], present, trashed)]
         if len(kept) == len(lines):
             return
         tmp = CREDITS.with_name(CREDITS.name + ".new")
@@ -416,14 +452,14 @@ def _prune_ledger(trashed: set[str]) -> None:
         pass
 
 
-def _prune_thumbnails(trashed: set[str]) -> None:
+def _prune_thumbnails(present: set[str], trashed: set[str]) -> None:
     try:
         cached = list(THUMBS.iterdir())
     except OSError:
         return
     for path in cached:
         owner = cache_owner(path.name)
-        if owner and _is_gone(owner, trashed):
+        if owner and _is_gone(owner, present, trashed):
             with contextlib.suppress(OSError):
                 path.unlink()
 
@@ -435,21 +471,26 @@ def prune() -> None:
 
     A photograph in the Trash keeps both: one restored from there has its
     title and byline back, and its tile does not wait on a decode. Files
-    removed outside wallhelper are caught here too.
+    removed outside wallhelper are caught here too. It runs when the
+    window opens, not after a delete: right after one, gvfs's list of the
+    Trash can still be missing the photograph just trashed.
 
     Nothing is dropped when it cannot be sure. Losing a caption is not
     undoable, and keeping a stale line is free: so not when the Trash
     cannot be read, and not when the folder looks empty, which is also how
-    an unmounted drive looks.
+    an unmounted drive looks. The folder is read before the Trash, so a
+    photograph deleted in between still counts as present rather than as
+    missing from both lists.
     """
     try:
+        present = {entry.name for entry in DIR.iterdir()}
         trashed = names_in_trash(in_trash())
     except OSError:
         return
-    if not collection():
+    if not present:
         return
-    _prune_ledger(trashed)
-    _prune_thumbnails(trashed)
+    _prune_ledger(present, trashed)
+    _prune_thumbnails(present, trashed)
 
 
 def delete_photo(path: Path) -> Deleted:
@@ -466,7 +507,6 @@ def delete_photo(path: Path) -> Deleted:
     following = [other for other in everything if other.name != path.name]
 
     how = trash(path)
-    prune()
     if following:
         # The photograph is gone either way; a neighbour that vanished too
         # leaves the wall as it was rather than undoing the answer.

@@ -33,12 +33,12 @@ def press(win, keyval):
 
 
 class SettingsOpen(unittest.TestCase):
-    ACTIONS = ("on_delete", "on_fetch", "on_source", "open_guide",
-               "open_settings", "open_shortcuts")
+    ACTIONS = ("on_delete", "on_fetch", "on_source", "on_undo",
+               "open_guide", "open_settings", "open_shortcuts")
 
     def test_letters_do_nothing_behind_the_panel(self):
-        for key in (Gdk.KEY_d, Gdk.KEY_f, Gdk.KEY_e, Gdk.KEY_o, Gdk.KEY_g,
-                    Gdk.KEY_comma, Gdk.KEY_question):
+        for key in (Gdk.KEY_d, Gdk.KEY_u, Gdk.KEY_f, Gdk.KEY_e, Gdk.KEY_o,
+                    Gdk.KEY_g, Gdk.KEY_comma, Gdk.KEY_question):
             with self.subTest(key=Gdk.keyval_name(key)):
                 win = stand_in(settings=True)
                 self.assertFalse(press(win, key))
@@ -50,6 +50,11 @@ class SettingsOpen(unittest.TestCase):
         win = stand_in(settings=True)
         self.assertTrue(press(win, Gdk.KEY_Escape))
         win.close_overlays.assert_called_once_with()
+
+    def test_u_undoes_a_delete(self):
+        win = stand_in()
+        self.assertTrue(press(win, Gdk.KEY_u))
+        win.on_undo.assert_called_once()
 
     def test_the_same_letters_work_with_no_panel_up(self):
         win = stand_in()

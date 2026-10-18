@@ -20,6 +20,7 @@ from ..library import (
     current_image,
     delete_photo,
     prune,
+    restore,
     set_wallpaper,
 )
 from ..paths import GUIDE_SEEN
@@ -35,6 +36,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
+UNDO_SECONDS = 7
+
 
 class Window(Adw.ApplicationWindow):
     def __init__(self, app):  # noqa: PLR0915 — GTK widget tree, one constructor
@@ -45,6 +48,7 @@ class Window(Adw.ApplicationWindow):
         self.push_lock = threading.Lock()
         self.wanted = None
         self.url = ""
+        self.undoable = None         # (toast, Deleted) while UNDO is on offer
 
         css = Gtk.CssProvider()
         css.load_from_data(stylesheet(palette()).encode())
@@ -154,8 +158,32 @@ class Window(Adw.ApplicationWindow):
         self.show_panel(self.shortcuts_panel, False)
         return False
 
-    def toast(self, text):
-        self.toasts.add_toast(Adw.Toast(title=text, timeout=2))
+    def toast(self, text, timeout=2, priority=Adw.ToastPriority.NORMAL):
+        self.toasts.add_toast(
+            Adw.Toast(title=text, timeout=timeout, priority=priority))
+
+    def offer_undo(self, gone):
+        """The delete toast, with UNDO for as long as it is up. U does the
+        same, so nothing here needs the pointer."""
+        self.withdraw_undo()
+        toast = Adw.Toast(
+            title=f"{gone.title} — moved to Trash", timeout=UNDO_SECONDS,
+            button_label="UNDO", priority=Adw.ToastPriority.HIGH,
+        )
+        toast.connect("button-clicked", lambda _t: self.on_undo())
+        toast.connect("dismissed", lambda _t: self.lapse_undo(toast))
+        self.undoable = (toast, gone)
+        self.toasts.add_toast(toast)
+
+    def lapse_undo(self, toast):
+        if self.undoable is not None and self.undoable[0] is toast:
+            self.undoable = None
+
+    def withdraw_undo(self):
+        if self.undoable is not None:
+            toast, _gone = self.undoable
+            self.undoable = None
+            toast.dismiss()
 
     def refresh(self, current=None):
         self.current = current or current_image()
@@ -216,11 +244,28 @@ class Window(Adw.ApplicationWindow):
             self.toast("Couldn't delete that one")
         else:
             if gone.how == TRASHED:
-                self.toast(f"{gone.title} — moved to Trash")
+                self.offer_undo(gone)
             else:
                 self.toast(f"{gone.title} — deleted for good, "
-                           "the Trash refused it")
+                           "the Trash refused it", timeout=UNDO_SECONDS,
+                           priority=Adw.ToastPriority.HIGH)
         self.refresh()
+
+    def on_undo(self, _button=None):
+        """Bring the last delete back out of the Trash, and back onto the
+        wall: it was the wallpaper when it went."""
+        if self.undoable is None:
+            return
+        _toast, gone = self.undoable
+        self.withdraw_undo()
+        try:
+            restore(gone.path)
+        except OSError:
+            self.toast(f"Couldn't restore {gone.title}; it is still in "
+                       "the Trash", timeout=UNDO_SECONDS)
+            return
+        self.on_pick(None, gone.path)
+        self.toast(f"{gone.title} — restored")
 
     def on_fetch(self, _button=None):
         def work():
@@ -268,6 +313,7 @@ class Window(Adw.ApplicationWindow):
             Gdk.KEY_g: self.open_guide, Gdk.KEY_G: self.open_guide,
             Gdk.KEY_comma: self.open_settings,
             Gdk.KEY_d: self.on_delete, Gdk.KEY_D: self.on_delete,
+            Gdk.KEY_u: self.on_undo, Gdk.KEY_U: self.on_undo,
             Gdk.KEY_e: self.elsewhere.toggle, Gdk.KEY_E: self.elsewhere.toggle,
             Gdk.KEY_o: self.on_source, Gdk.KEY_O: self.on_source,
             Gdk.KEY_f: self.on_fetch, Gdk.KEY_F: self.on_fetch,

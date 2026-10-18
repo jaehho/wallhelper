@@ -29,7 +29,8 @@ wallhelper info             what's on screen and where it came from
 wallhelper gui              the same thing with pictures
 ```
 
-In the window: click a tile to set it as wallpaper, `D` deletes,
+In the window: click a tile to set it as wallpaper, `D` deletes (UNDO on the
+message, or `U`, brings it back out of the Trash for a few seconds),
 `E` expands Elsewhere, `O` opens the source page, `F` fetches now, `,` opens
 settings, `?` lists every shortcut, `G` shows the guide.
 
@@ -104,8 +105,8 @@ the shipped sources stay shipped, so they keep improving.
 - Everything fetched is kept. Deleting is the only removal, and it goes through
   the desktop wastebasket. A deleted photograph keeps its `.credits` line and
   thumbnails while the Trash holds it, so restoring it brings its caption
-  back; both are pruned once it is in neither place. If the Trash refuses the
-  file, `delete` says it was deleted for good.
+  back; both are pruned, when the window opens, once it is in neither place.
+  If the Trash refuses the file, `delete` says it was deleted for good.
 
 ## Develop
 
