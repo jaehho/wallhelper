@@ -101,7 +101,7 @@ BLURBS = {
     "bing": "One curated photograph a day, titled and located.",
     "apod": "NASA's astronomy picture of the day.",
     "wikipedia": "Wikipedia's picture of the day, fully credited.",
-    "unsplash": "Needs a free access key pasted into its url first.",
+    "unsplash": "Random landscape photographs. Needs a free access key.",
 }
 
 

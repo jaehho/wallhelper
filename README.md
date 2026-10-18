@@ -84,10 +84,15 @@ Two name lists decide what a source is for:
 `autofetch` is the morning timer. `gallery` is the Elsewhere row. Shipped:
 `bing` (morning), `apod`, `wikipedia`, `unsplash`. APOD reads NASA's WordPress
 `apod-basic` route (the old `api.nasa.gov/planetary` image fields are gone).
-Unsplash takes `count=12` so Elsewhere has a grid; it needs a free access key
-pasted into its url. Switch sources on in the settings panel, which also has a
-**CHECK** button that asks every source what it has today without downloading
-it, and an **EDIT** button that opens `config.json` in your text editor.
+Unsplash takes `count=12` so Elsewhere has a grid; it needs a free access key,
+and the settings panel has a box for it. Switch sources on in the settings
+panel, which also has a **CHECK** button that asks every source what it has
+today without downloading it, and an **EDIT** button that opens `config.json`
+in your text editor. Under MORNING it says when the morning fetch last ran and
+what it came to (`Last fetch 2026·10·18: bing`, or `failed: bing —
+Unauthorized`), so a source that broke while nobody was looking says so the
+next time you open it. `F` in the window runs the same fetch and toasts the
+same answer.
 
 A source needing an API key declares where to get one, and the panel then offers
 the signup link and a box to paste into; the key goes wherever the placeholder
@@ -113,11 +118,11 @@ the shipped sources stay shipped, so they keep improving.
 - `.credits` is tab-separated filename/title/byline/url. A dotfile, so an image
   browser pointed at the folder skips it.
 - `~/.local/state/wallhelper/last-fetch.json` is what the last morning fetch
-  came to: when, which source, and its reason if it failed. It is rewritten
-  each run and is not a log; the journal is the log. A second run the same day
-  asks nobody when that note says today's photograph is still in the
-  collection, and a photograph the source serves a second time (Bing before it
-  rolls over) counts as fetched.
+  came to: when, which source, and its reason if it failed. The settings panel
+  reads it. It is rewritten each run and is not a log; the journal is the log.
+  A second run the same day asks nobody when that note says today's photograph
+  is still in the collection, and a photograph the source serves a second time
+  (Bing before it rolls over) counts as fetched.
 - Everything fetched is kept. Deleting is the only removal, and it goes through
   the desktop wastebasket. A deleted photograph keeps its `.credits` line and
   thumbnails while the Trash holds it, so restoring it brings its caption

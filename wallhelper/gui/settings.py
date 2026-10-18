@@ -17,6 +17,7 @@ from ..config import (
     settings_lists,
     toggle_source,
 )
+from ..morning import headline, last_run
 from ..paths import CONFIG
 from ..sources import host, probe_source
 
@@ -67,6 +68,14 @@ class SettingsPanel(Gtk.Revealer):
             orientation=Gtk.Orientation.VERTICAL, spacing=0, margin_top=4)
         column.append(self.auto_list)
 
+        # What the last morning fetch came to: the timer runs it while
+        # nobody is looking, so this is where a broken source says so.
+        self.last_fetch = Gtk.Label(
+            xalign=0, wrap=True, margin_top=8, max_width_chars=44,
+            selectable=True, visible=False)
+        self.last_fetch.add_css_class("footnote")
+        column.append(self.last_fetch)
+
         self.section(column, "ELSEWHERE")
         self.gallery_list = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=0, margin_top=4)
@@ -105,6 +114,7 @@ class SettingsPanel(Gtk.Revealer):
         column.append(self.config_row())
 
         self.fill_sources()
+        self.show_last_fetch()
 
         scroller = Gtk.ScrolledWindow(
             hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True,
@@ -116,6 +126,19 @@ class SettingsPanel(Gtk.Revealer):
         panel.append(scroller)
 
         self.set_child(panel)
+
+    def show_last_fetch(self):
+        """Read the note the last fetch left. No note, no line: nothing is
+        known about a morning that has not happened."""
+        run = last_run()
+        self.last_fetch.set_visible(run is not None)
+        if run is None:
+            return
+        self.last_fetch.set_text(headline(run))
+        if run.ok:
+            self.last_fetch.remove_css_class("status-bad")
+        else:
+            self.last_fetch.add_css_class("status-bad")
 
     def config_row(self):
         """Where the file is, and a way to open it."""

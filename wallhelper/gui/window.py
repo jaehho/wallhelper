@@ -145,6 +145,7 @@ class Window(Adw.ApplicationWindow):
     def open_settings(self, _button=None):
         self.show_panel(self.guide_panel, False)
         self.show_panel(self.shortcuts_panel, False)
+        self.settings_panel.show_last_fetch()
         self.show_panel(self.settings_panel, True)
         # Not a source row: Enter or Space straight after `,` would switch
         # that source off.
@@ -306,6 +307,7 @@ class Window(Adw.ApplicationWindow):
                 self.toast(run.message, timeout=LONG_TOAST_SECONDS,
                            priority=Adw.ToastPriority.HIGH)
             self.refresh()
+            self.settings_panel.show_last_fetch()
             return False
 
         threading.Thread(target=work, daemon=True).start()
