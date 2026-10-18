@@ -8,22 +8,28 @@ plate and strip.
 
 from __future__ import annotations
 
-import argparse
-import shutil
 import threading
 
 import gi
 
-from ..cli import cmd_delete, cmd_fetch
 from ..desktop import push_wallpaper
-from ..library import current_image, label, set_wallpaper
+from ..library import (
+    TRASHED,
+    current_image,
+    delete_photo,
+    prune,
+    restore,
+    set_wallpaper,
+)
+from ..morning import FAILED, SAVED, TODAY, Outcome, fetch_morning
+from ..net import describe
 from ..paths import GUIDE_SEEN
 from .elsewhere import ElsewhereBar
 from .grid import CollectionGrid
 from .plate import Plate
 from .settings import SettingsPanel
 from .sheets import guide_sheet, shortcuts_sheet
-from .style import palette, stylesheet
+from .style import LONG_TOAST_SECONDS, palette, stylesheet
 from .thumbs import dimensions
 
 gi.require_version("Gtk", "4.0")
@@ -40,6 +46,9 @@ class Window(Adw.ApplicationWindow):
         self.push_lock = threading.Lock()
         self.wanted = None
         self.url = ""
+        self.undoable = None         # (toast, Deleted) while UNDO is on offer
+        self.fetching = False        # F is working; another F waits
+        self.held = set()            # keycodes pressed and not yet released
 
         css = Gtk.CssProvider()
         css.load_from_data(stylesheet(palette()).encode())
@@ -81,7 +90,8 @@ class Window(Adw.ApplicationWindow):
         corner.append(close)
         outer.append(top)
 
-        self.elsewhere = ElsewhereBar(self.pointer, self.on_adopt, self.toast)
+        self.elsewhere = ElsewhereBar(
+            self.pointer, self.on_adopt, self.toast, self.on_set)
         outer.append(self.elsewhere)
 
         self.grid = CollectionGrid(self.pointer, self.on_pick)
@@ -104,10 +114,16 @@ class Window(Adw.ApplicationWindow):
 
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self.on_key)
+        keys.connect("key-released", self.on_key_released)
         self.add_controller(keys)
+        # A release that lands elsewhere (focus moved) would leave its key
+        # looking held.
+        self.connect("notify::is-active", lambda *_a: self.held.clear())
 
         self.refresh()
         self.elsewhere.reload()
+        # Off the main thread: it asks gio what the Trash holds.
+        threading.Thread(target=prune, daemon=True).start()
         if not GUIDE_SEEN.exists():
             GLib.timeout_add(620, self.open_guide)
 
@@ -129,8 +145,11 @@ class Window(Adw.ApplicationWindow):
     def open_settings(self, _button=None):
         self.show_panel(self.guide_panel, False)
         self.show_panel(self.shortcuts_panel, False)
+        self.settings_panel.show_last_fetch()
         self.show_panel(self.settings_panel, True)
-        self.set_focus(self.settings_panel.first_row or self.settings_panel)
+        # Not a source row: Enter or Space straight after `,` would switch
+        # that source off.
+        self.set_focus(self.settings_panel.shut)
         return False
 
     def open_shortcuts(self, _button=None):
@@ -145,8 +164,32 @@ class Window(Adw.ApplicationWindow):
         self.show_panel(self.shortcuts_panel, False)
         return False
 
-    def toast(self, text):
-        self.toasts.add_toast(Adw.Toast(title=text, timeout=2))
+    def toast(self, text, timeout=2, priority=Adw.ToastPriority.NORMAL):
+        self.toasts.add_toast(
+            Adw.Toast(title=text, timeout=timeout, priority=priority))
+
+    def offer_undo(self, gone):
+        """The delete toast, with UNDO for as long as it is up. U does the
+        same, so nothing here needs the pointer."""
+        self.withdraw_undo()
+        toast = Adw.Toast(
+            title=f"{gone.title} — moved to Trash", timeout=LONG_TOAST_SECONDS,
+            button_label="UNDO", priority=Adw.ToastPriority.HIGH,
+        )
+        toast.connect("button-clicked", lambda _t: self.on_undo())
+        toast.connect("dismissed", lambda _t: self.lapse_undo(toast))
+        self.undoable = (toast, gone)
+        self.toasts.add_toast(toast)
+
+    def lapse_undo(self, toast):
+        if self.undoable is not None and self.undoable[0] is toast:
+            self.undoable = None
+
+    def withdraw_undo(self):
+        if self.undoable is not None:
+            toast, _gone = self.undoable
+            self.undoable = None
+            toast.dismiss()
 
     def refresh(self, current=None):
         self.current = current or current_image()
@@ -154,6 +197,7 @@ class Window(Adw.ApplicationWindow):
         self.plate.refresh(self.current, size)
         self.url = self.plate.url
         self.grid.refresh(self.current)
+        self.elsewhere.refresh_marks()
 
     def push(self, image):
         """Serialised, latest-wins. Holding an arrow down otherwise queues
@@ -178,6 +222,11 @@ class Window(Adw.ApplicationWindow):
         self.push(path)
         self.refresh(path)
 
+    def on_set(self, path):
+        """An Elsewhere tile the collection already holds: nothing to save,
+        so it is picked like any other photograph."""
+        self.on_pick(None, path)
+
     def on_adopt(self, path, _cand):
         try:
             set_wallpaper(path, push=False)
@@ -197,29 +246,81 @@ class Window(Adw.ApplicationWindow):
     def on_delete(self, _button=None):
         if self.current is None:
             return
-        name = label(self.current).get("title") or self.current.stem
-        failed = cmd_delete(argparse.Namespace()) != 0
-        self.refresh()
-        if failed:
+        # The photograph the plate is showing, not whatever hyprpaper
+        # reports: a pick is pushed on a thread, so the two can disagree.
+        try:
+            gone = delete_photo(self.current)
+        except ValueError:
+            self.toast("That one is not in the collection")
+        except OSError:
             self.toast("Couldn't delete that one")
-        elif shutil.which("gio"):
-            self.toast(f"{name} — moved to Trash")
         else:
-            self.toast(f"Deleted {name}")
+            if gone.how == TRASHED:
+                self.offer_undo(gone)
+            else:
+                self.toast(f"{gone.title} — deleted for good, "
+                           "the Trash refused it", timeout=LONG_TOAST_SECONDS,
+                           priority=Adw.ToastPriority.HIGH)
+        self.refresh()
+
+    def on_undo(self, _button=None):
+        """Bring the last delete back out of the Trash, and back onto the
+        wall: it was the wallpaper when it went."""
+        if self.undoable is None:
+            return
+        _toast, gone = self.undoable
+        self.withdraw_undo()
+        try:
+            restore(gone.path)
+        except OSError:
+            self.toast(f"Couldn't restore {gone.title}; it is still in "
+                       "the Trash", timeout=LONG_TOAST_SECONDS)
+            return
+        self.on_pick(None, gone.path)
+        self.toast(f"{gone.title} — restored")
 
     def on_fetch(self, _button=None):
-        def work():
-            rc = cmd_fetch(argparse.Namespace(wait=False))
-            GLib.idle_add(done, rc)
+        # What you press again when nothing seems to happen.
+        if self.fetching:
+            return
+        self.fetching = True
+        busy = Adw.Toast(title="Fetching\u2026", timeout=0)
+        self.toasts.add_toast(busy)
 
-        def done(rc):
-            if rc != 0:
-                self.toast("Couldn't reach the morning source")
+        def work():
+            try:
+                run = fetch_morning()
+            except Exception as err:   # a thread that dies says nothing
+                run = Outcome(FAILED, "", describe(err))
+            GLib.idle_add(done, run)
+
+        def done(run):
+            self.fetching = False
+            busy.dismiss()
+            if run.kind == SAVED:
+                self.toast(f"{run.source} \u2014 saved and set")
+            elif run.kind == TODAY:
+                self.toast("Already have today's photo")
+            elif run.ok:
+                self.toast(run.message)
+            else:
+                self.toast(run.message, timeout=LONG_TOAST_SECONDS,
+                           priority=Adw.ToastPriority.HIGH)
             self.refresh()
+            self.settings_panel.show_last_fetch()
+            return False
 
         threading.Thread(target=work, daemon=True).start()
 
-    def on_key(self, _controller, keyval, _code, _state):
+    def on_key_released(self, _controller, _keyval, code, _state):
+        self.held.discard(code)
+
+    def on_key(self, _controller, keyval, code, _state):
+        # GTK4 sends an auto-repeat as more presses with no release between
+        # them, and says nothing else to tell it from a fresh one.
+        repeat = code in self.held
+        self.held.add(code)
+
         # BUBBLE phase, so a focused entry has already had its go at the
         # key -- but settings has text fields, and a stray 'd' there must
         # type a d, not delete a photo.
@@ -239,6 +340,12 @@ class Window(Adw.ApplicationWindow):
             self.close_overlays()      # any key dismisses either sheet
             return True
 
+        if self.settings_panel.get_reveal_child():
+            # A source row is a button, so D or F would act on the window
+            # behind the panel. Settings answers Esc, and the keys of the
+            # widget that has focus, and nothing else.
+            return False
+
         if typing:
             return False
 
@@ -247,11 +354,15 @@ class Window(Adw.ApplicationWindow):
             Gdk.KEY_g: self.open_guide, Gdk.KEY_G: self.open_guide,
             Gdk.KEY_comma: self.open_settings,
             Gdk.KEY_d: self.on_delete, Gdk.KEY_D: self.on_delete,
+            Gdk.KEY_u: self.on_undo, Gdk.KEY_U: self.on_undo,
             Gdk.KEY_e: self.elsewhere.toggle, Gdk.KEY_E: self.elsewhere.toggle,
             Gdk.KEY_o: self.on_source, Gdk.KEY_O: self.on_source,
             Gdk.KEY_f: self.on_fetch, Gdk.KEY_F: self.on_fetch,
         }
         if keyval in actions:
-            actions[keyval](None)
+            # Held down, D would thin the collection one photograph per
+            # repeat, each deleted as the neighbour of the last.
+            if not (repeat and keyval in (Gdk.KEY_d, Gdk.KEY_D)):
+                actions[keyval](None)
             return True
         return False

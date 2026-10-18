@@ -29,6 +29,7 @@ SHORTCUTS = (
     ("\u2190  \u2192  H  L", "", "Move through the collection"),
     ("Enter", "", "Set the selected photograph as wallpaper"),
     ("D", "", "Delete from the collection"),
+    ("U", "", "Undo the delete, while its message is up"),
     ("O", "", "Open the source page"),
     ("E", "", "Expand or collapse Elsewhere"),
     ("F", "", "Fetch the morning photo now"),

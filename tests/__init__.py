@@ -20,6 +20,8 @@ os.environ["WALLHELPER_DIR"] = str(_ROOT / "photos")
 os.environ["WALLHELPER_CONFIG"] = str(_ROOT / "config.json")
 os.environ["XDG_CACHE_HOME"] = str(_ROOT / "cache")
 os.environ["XDG_STATE_HOME"] = str(_ROOT / "state")
+# Where gio would put a trashed file, should a test ever reach it unmocked.
+os.environ["XDG_DATA_HOME"] = str(_ROOT / "data")
 
 
 def guard():

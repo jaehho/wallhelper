@@ -10,20 +10,35 @@ from __future__ import annotations
 
 import contextlib
 import html
+import io
 import json
 import random
 import re
 import time
-import urllib.error
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
+from typing import NamedTuple
 
-from .library import measure, remember, slugify
-from .net import download, fetch_url
+from .config import needs_setup
+from .library import measure, measure_stream, remember, slugify
+from .net import (
+    FAILURES,
+    FetchError,
+    describe,
+    download,
+    fetch_head,
+    fetch_url,
+)
 from .paths import DIR
 
 _REPLACE_PAIR_LEN = 2
 _YYYYMMDD_LEN = 8
+# Where a JPEG keeps its size is after the metadata in front of it, which
+# the photographs these sources serve do not stretch past a few dozen KB.
+_HEAD_BYTES = 256 * 1024
+_SIZING_THREADS = 8
 
 
 def dig(data, path: str):
@@ -101,11 +116,13 @@ def _resolve(spec: dict, timeout: int = 30) -> tuple[list | None, str]:
     url = fill(spec.get("url"), {})
     if url:
         try:
-            document = json.loads(fetch_url(url, timeout=timeout,
-                                            headers=spec.get("headers")))
-        except (urllib.error.URLError, OSError, TimeoutError) as problem:
-            return None, str(getattr(problem, "reason", problem))[:70]
-        except (json.JSONDecodeError, ValueError):
+            reply = fetch_url(url, timeout=timeout,
+                              headers=spec.get("headers"))
+        except FAILURES as problem:
+            return None, describe(problem)
+        try:
+            document = json.loads(reply)
+        except ValueError:
             return None, "the reply is not JSON"
 
     if spec.get("list"):
@@ -116,16 +133,29 @@ def _resolve(spec: dict, timeout: int = 30) -> tuple[list | None, str]:
     return [document], ""
 
 
-def list_source(_name: str, spec: dict) -> list[dict]:
+class Listing(NamedTuple):
+    """What one source has to offer today."""
+
+    candidates: list[dict]
+    complaint: str     # why there are none, in a line; "" when there are
+
+
+def list_source(_name: str, spec: dict, timeout: int = 30) -> Listing:
     """Every usable entry from one source today. Nothing is downloaded.
 
-    Each answer is a filled candidate -- image, title, credit, link, date,
-    ident -- after `require` and `replace` have been applied, so the gallery
-    never offers a thumb it could not later adopt.
+    Each candidate is filled -- image, title, credit, link, date, ident --
+    after `require` and `replace` have been applied, so the gallery never
+    offers a thumb it could not later adopt. A source with nothing to offer
+    says why in the complaint.
+
+    A source still holding its key placeholder is not asked: the request
+    would carry the placeholder to the API as if it were a key.
     """
-    entries, _complaint = _resolve(spec)
+    if needs_setup(spec):
+        return Listing([], "needs a key")
+    entries, complaint = _resolve(spec, timeout)
     if entries is None:
-        return []
+        return Listing([], complaint)
 
     demands = spec.get("require")
     demands = demands if isinstance(demands, dict) else {}
@@ -161,61 +191,161 @@ def list_source(_name: str, spec: dict) -> list[dict]:
             "date": fill(spec.get("date"), entry),
             "ident": ident,
         })
-    return out
+    return Listing(out, "" if out else "nothing to offer today")
 
 
-def adopt(name: str, spec: dict, cand: dict) -> Path | None:
-    """Download one candidate into the collection and remember who made it.
+def _floor(spec: dict, key: str) -> float:
+    """A numeric demand of the source, 0 when it makes none."""
+    try:
+        return float(spec.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
-    Same filename rules as the daily fetch: {day}-{name}-{ident}{suffix},
-    with the day read back out of the candidate's own date.
+
+def refusal(spec: dict, size: tuple[int, int] | None) -> str:
+    """Why a photograph of this size is not worth keeping from this source,
+    in a few words, or "" when it is.
+
+    One too small to cover the screen is worse than none (`min_width`), and
+    so is one whose shape `cover` would crop to a strip: a square or a
+    portrait on a landscape screen (`min_aspect`, width over height).
     """
+    narrowest, squarest = _floor(spec, "min_width"), _floor(spec, "min_aspect")
+    if not (narrowest or squarest):
+        return ""
+    if size is None:
+        return "can't tell its size"
+    width, height = size
+    if width < narrowest:
+        return f"too small: {width} px"
+    if width < squarest * height:
+        return f"not wide enough: {width} \u00d7 {height}"
+    return ""
+
+
+def remote_size(url: str, timeout: int) -> tuple[int, int] | None:
+    """Width and height of the photograph at a URL, read from its first
+    bytes alone; None when those do not say. FetchError when they never
+    came."""
+    return measure_stream(io.BytesIO(fetch_head(url, _HEAD_BYTES, timeout)))
+
+
+def _refusal_at(spec: dict, url: str, timeout: int) -> str:
+    try:
+        return refusal(spec, remote_size(url, timeout))
+    except FetchError:
+        # Not knowing is not a reason: the tile and the click will say
+        # what is wrong with a URL that does not answer.
+        return ""
+
+
+def offer_source(name: str, spec: dict, timeout: int = 30) -> Listing:
+    """What the gallery shows from one source: list_source, less every
+    candidate that adopt would refuse for its size once downloaded.
+
+    Only the first bytes of each are fetched to find out, and only when the
+    source states a size it needs, so a source without one costs nothing
+    more than its listing.
+    """
+    listing = list_source(name, spec, timeout)
+    if not listing.candidates or not (
+            _floor(spec, "min_width") or _floor(spec, "min_aspect")):
+        return listing
+
+    with ThreadPoolExecutor(max_workers=_SIZING_THREADS) as pool:
+        refusals = list(pool.map(
+            partial(_refusal_at, spec, timeout=timeout),
+            [cand["image"] for cand in listing.candidates]))
+    fitting = [cand for cand, why in zip(listing.candidates, refusals,
+                                         strict=True) if not why]
+    if fitting:
+        return Listing(fitting, "")
+    return Listing([], f"nothing fits today ({refusals[0]})")
+
+
+def target(name: str, cand: dict) -> Path:
+    """Where adopt keeps a candidate: {day}-{name}-{ident}{suffix} in the
+    collection, with the day read back out of the candidate's own date.
+    The same candidate is always the same file, which is how the gallery
+    knows it already has one."""
     src = cand.get("image") or ""
-    if not src:
-        return None
     ident = cand.get("ident") or time.strftime("%H%M%S")
     day = re.sub(r"\D", "", str(cand.get("date") or ""))
     if len(day) != _YYYYMMDD_LEN:
         day = time.strftime("%Y%m%d")
     suffix = Path(urllib.parse.urlparse(src).path).suffix or ".jpg"
-    out = DIR / f"{day}-{name}-{ident}{suffix}"
-    if out.exists() or not download(src, out):
-        return None
+    return DIR / f"{day}-{name}-{ident}{suffix}"
 
-    # A photograph too small to cover the screen is worse than none.
-    try:
-        floor = int(spec.get("min_width") or 0)
-    except (TypeError, ValueError):
-        floor = 0
-    size = measure(out)
-    if floor and (size is None or size[0] < floor):
+
+class AlreadyHeldError(FetchError):
+    """The candidate is a photograph the collection already holds."""
+
+
+def adopt(name: str, spec: dict, cand: dict) -> Path:
+    """Download one candidate into the collection and remember who made it.
+
+    Same filename rules as the daily fetch (see target). FetchError, saying
+    why, when it was not kept; AlreadyHeldError when the answer is that it
+    already was.
+    """
+    src = cand.get("image") or ""
+    if not src:
+        msg = "no image to fetch"
+        raise FetchError(msg)
+    out = target(name, cand)
+    if out.exists():
+        msg = "already in the collection"
+        raise AlreadyHeldError(msg)
+    download(src, out)
+
+    complaint = refusal(spec, measure(out))
+    if complaint:
         out.unlink(missing_ok=True)
-        return None
+        raise FetchError(complaint)
 
     remember(out.name, cand.get("title") or "", cand.get("credit") or "",
              cand.get("link") or "")
     return out
 
 
-def fetch_source(name: str, spec: dict) -> Path | None:
+class Fetched(NamedTuple):
+    """What asking one source for a photograph came to."""
+
+    path: Path | None    # the photograph, new or already held
+    new: bool            # saved just now, not found in the collection
+    why: str             # with no path: the reason, in a line
+
+
+def fetch_source(name: str, spec: dict) -> Fetched:
     """Run one source described entirely by config: list, pick one, keep it.
 
     That covers every shipped one and, more to the point, the next one --
     adding a source is writing an object, not editing this file.
+
+    A source whose photograph the collection already holds has answered:
+    it is a path that is not new. A source that could give nothing says
+    why, in the words of the first thing that went wrong.
     """
-    cands = list_source(name, spec)
+    listing = list_source(name, spec)
+    cands = listing.candidates
     if not cands:
-        return None
+        return Fetched(None, False, listing.complaint)
 
     # Start somewhere random and walk, so a folder full of past picks doesn't
     # make a list source give up on its first collision.
     start = random.randrange(len(cands))
+    held, why = None, ""
     for step in range(len(cands)):
         cand = cands[(start + step) % len(cands)]
-        got = adopt(name, spec, cand)
-        if got is not None:
-            return got
-    return None
+        try:
+            return Fetched(adopt(name, spec, cand), True, "")
+        except AlreadyHeldError:
+            held = held or target(name, cand)
+        except FetchError as err:
+            why = why or str(err)
+    if held and not why:
+        return Fetched(held, False, "")
+    return Fetched(None, False, why)
 
 
 def probe_source(_name: str, spec: dict) -> tuple[bool, str]:

@@ -23,13 +23,14 @@ AUR workflow.
 
 ```
 wallhelper fetch [--wait]   pull the day's photo (what the systemd timer runs)
-wallhelper set <image>      make an image the wallpaper
-wallhelper delete           remove what's on screen for good
+wallhelper set <image>      make a photo in the collection the wallpaper
+wallhelper delete           send what's on screen to the Trash
 wallhelper info             what's on screen and where it came from
 wallhelper gui              the same thing with pictures
 ```
 
-In the window: click a tile to set it as wallpaper, `D` deletes,
+In the window: click a tile to set it as wallpaper, `D` deletes (UNDO on the
+message, or `U`, brings it back out of the Trash for a few seconds),
 `E` expands Elsewhere, `O` opens the source page, `F` fetches now, `,` opens
 settings, `?` lists every shortcut, `G` shows the guide.
 
@@ -67,6 +68,7 @@ an array, and a string with no braces is used as-is.
 | `replace` | `["pattern", "with"]` — a regex over the image URL |
 | `headers` | extra request headers |
 | `min_width` | skip anything narrower than this |
+| `min_aspect` | skip anything below this width ÷ height; `1.3` drops squares and portraits |
 | `key` | `{"get": url, "note": text, "into": placeholder}` — see below |
 
 Filters in a template: `|name` (after the last `/` or `:`), `|stem` (without
@@ -82,14 +84,28 @@ Two name lists decide what a source is for:
 `autofetch` is the morning timer. `gallery` is the Elsewhere row. Shipped:
 `bing` (morning), `apod`, `wikipedia`, `unsplash`. APOD reads NASA's WordPress
 `apod-basic` route (the old `api.nasa.gov/planetary` image fields are gone).
-Unsplash takes `count=12` so Elsewhere has a grid; it needs a free access key
-pasted into its url. Switch sources on in the settings panel, which also has a
-**CHECK** button that asks every source what it has today without downloading
-it.
+Unsplash takes `count=12` so Elsewhere has a grid; it needs a free access key,
+and the settings panel has a box for it. Switch sources on in the settings
+panel, which also has a **CHECK** button that asks every source what it has
+today without downloading it, and an **EDIT** button that opens `config.json`
+in your text editor. Under MORNING it says when the morning fetch last ran and
+what it came to (`Last fetch 2026·10·18: bing`, or `failed: bing —
+Unauthorized`), so a source that broke while nobody was looking says so the
+next time you open it. `F` in the window runs the same fetch and toasts the
+same answer.
 
 A source needing an API key declares where to get one, and the panel then offers
 the signup link and a box to paste into; the key goes wherever the placeholder
 appears, whether that is a query argument or a header.
+
+Elsewhere asks every `gallery` source at once and paints each as it answers,
+waiting no more than eight seconds on any. A source that is down, slow, or
+still holding its key placeholder gets a muted line under the row in place of
+silence (`UNSPLASH — needs a key`, `APOD — timed out`, `DENIED —
+Unauthorized`), and a placeholder is never sent to the API.
+
+A tile the collection already holds says SAVED, and choosing it sets that
+photograph instead of fetching it again.
 
 Your changes live in `~/.config/wallhelper/config.json`, and only your changes —
 the shipped sources stay shipped, so they keep improving.
@@ -101,8 +117,17 @@ the shipped sources stay shipped, so they keep improving.
   to hyprpaper alone does not.
 - `.credits` is tab-separated filename/title/byline/url. A dotfile, so an image
   browser pointed at the folder skips it.
+- `~/.local/state/wallhelper/last-fetch.json` is what the last morning fetch
+  came to: when, which source, and its reason if it failed. The settings panel
+  reads it. It is rewritten each run and is not a log; the journal is the log.
+  A second run the same day asks nobody when that note says today's photograph
+  is still in the collection, and a photograph the source serves a second time
+  (Bing before it rolls over) counts as fetched.
 - Everything fetched is kept. Deleting is the only removal, and it goes through
-  the desktop wastebasket.
+  the desktop wastebasket. A deleted photograph keeps its `.credits` line and
+  thumbnails while the Trash holds it, so restoring it brings its caption
+  back; both are pruned, when the window opens, once it is in neither place.
+  If the Trash refuses the file, `delete` says it was deleted for good.
 
 ## Develop
 
@@ -120,7 +145,8 @@ else and a guard stops them before they touch a real collection.
 
 Modules: `paths` (every path, importing nothing), `config` (the shipped sources
 and your deltas), `net`, `desktop` (notifications, hyprctl, hyprpaper),
-`library` (the collection on disk), `sources` (the template engine), `cli`, and
+`library` (the collection on disk), `sources` (the template engine),
+`morning` (the daily fetch and the note it leaves), `cli`, and
 `gui/` (`style`, `thumbs`, `grid`, `elsewhere`, `plate`, `sheets`, `settings`,
 `window`, `app`). Importing `wallhelper.gui` is what pulls in GTK, which is why
 the CLI does it inside the `gui` subcommand and nowhere else.

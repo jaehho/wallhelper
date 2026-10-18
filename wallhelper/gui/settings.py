@@ -11,14 +11,18 @@ from ..config import (
     BLURBS,
     apply_key,
     config,
+    ensure_config,
     needs_setup,
     save_config,
+    settings_lists,
+    toggle_source,
 )
+from ..morning import headline, last_run
 from ..paths import CONFIG
 from ..sources import host, probe_source
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gio, GLib, Gtk, Pango  # noqa: E402
 
 
 class SettingsPanel(Gtk.Revealer):
@@ -56,12 +60,21 @@ class SettingsPanel(Gtk.Revealer):
         shut.set_cursor(self.pointer)
         shut.connect("clicked", lambda _b: self.on_close())
         head.append(shut)
+        self.shut = shut
         column.append(head)
 
         self.section(column, "MORNING")
         self.auto_list = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=0, margin_top=4)
         column.append(self.auto_list)
+
+        # What the last morning fetch came to: the timer runs it while
+        # nobody is looking, so this is where a broken source says so.
+        self.last_fetch = Gtk.Label(
+            xalign=0, wrap=True, margin_top=8, max_width_chars=44,
+            selectable=True, visible=False)
+        self.last_fetch.add_css_class("footnote")
+        column.append(self.last_fetch)
 
         self.section(column, "ELSEWHERE")
         self.gallery_list = Gtk.Box(
@@ -98,14 +111,10 @@ class SettingsPanel(Gtk.Revealer):
         rule.add_css_class("hairline")
         column.append(rule)
 
-        path = Gtk.Label(
-            label=str(CONFIG).replace(str(Path.home()), "~"),
-            xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR,
-            selectable=True)
-        path.add_css_class("footnote")
-        column.append(path)
+        column.append(self.config_row())
 
         self.fill_sources()
+        self.show_last_fetch()
 
         scroller = Gtk.ScrolledWindow(
             hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True,
@@ -118,30 +127,57 @@ class SettingsPanel(Gtk.Revealer):
 
         self.set_child(panel)
 
+    def show_last_fetch(self):
+        """Read the note the last fetch left. No note, no line: nothing is
+        known about a morning that has not happened."""
+        run = last_run()
+        self.last_fetch.set_visible(run is not None)
+        if run is None:
+            return
+        self.last_fetch.set_text(headline(run))
+        if run.ok:
+            self.last_fetch.remove_css_class("status-bad")
+        else:
+            self.last_fetch.add_css_class("status-bad")
+
+    def config_row(self):
+        """Where the file is, and a way to open it."""
+        path = Gtk.Label(
+            label=str(CONFIG).replace(str(Path.home()), "~"),
+            xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR,
+            selectable=True, hexpand=True, valign=Gtk.Align.CENTER)
+        path.add_css_class("footnote")
+        edit = Gtk.Button(
+            label="EDIT", valign=Gtk.Align.CENTER,
+            tooltip_text="Open config.json in your text editor",
+        )
+        edit.add_css_class("plate-action")
+        edit.set_cursor(self.pointer)
+        edit.connect("clicked", self.on_edit)
+        row = Gtk.Box(spacing=16)
+        row.append(path)
+        row.append(edit)
+        return row
+
     def fill_sources(self):
-        """MORNING lists the autofetch names; ELSEWHERE the gallery and
-        anything else defined that you could switch on."""
+        """MORNING lists the morning sources, on or off; ELSEWHERE the
+        gallery and anything else defined that you could switch on."""
         for box in (self.auto_list, self.gallery_list):
             while (child := box.get_first_child()):
                 box.remove(child)
 
         cfg = config()
-        auto = [name for name in (cfg.get("autofetch") or [])
-                if isinstance(cfg.get(name), dict)]
-        gallery = [name for name in (cfg.get("gallery") or [])
-                   if isinstance(cfg.get(name), dict)]
-        rest = [name for name, spec in cfg.items()
-                if name not in auto and name not in gallery
-                and isinstance(spec, dict) and spec.get("image")]
+        morning, elsewhere = settings_lists(cfg)
         self.source_notes = {}
         self.source_rows = {}
         self.first_row = None
 
-        for name in auto:
-            self._row(self.auto_list, name, cfg[name], True, "autofetch")
-        for name in gallery + rest:
-            self._row(self.gallery_list, name, cfg[name], name in gallery,
-                      "gallery")
+        for name in morning:
+            self._row(self.auto_list, name, cfg[name],
+                      name in (cfg.get("autofetch") or []), "autofetch")
+        for name in elsewhere:
+            self._row(self.gallery_list, name, cfg[name],
+                      name in (cfg.get("gallery") or []), "gallery")
 
     def _row(self, box, name, spec, on, which):
         row = Gtk.Button()
@@ -236,7 +272,7 @@ class SettingsPanel(Gtk.Revealer):
             return
         cfg = config()
         cfg[name] = apply_key(cfg.get(name) or {}, token, value)
-        key = "autofetch" if name == "bing" else "gallery"
+        key = "autofetch" if name in settings_lists(cfg)[0] else "gallery"
         on = [item for item in (cfg.get(key) or [])
               if isinstance(item, str)]
         if name not in on:
@@ -256,13 +292,7 @@ class SettingsPanel(Gtk.Revealer):
 
     def on_toggle_source(self, _button, name, which):
         cfg = config()
-        on = [item for item in (cfg.get(which) or [])
-              if isinstance(item, str)]
-        if name in on:
-            on.remove(name)
-        else:
-            on.append(name)
-        cfg[which] = on
+        now_on = toggle_source(cfg, name, which)
         try:
             save_config(cfg)
         except OSError as problem:
@@ -277,15 +307,35 @@ class SettingsPanel(Gtk.Revealer):
             self.set_status("No morning source is switched on. "
                             "Tomorrow\u2019s fetch will have nowhere to look.",
                             bad=True)
-        elif name in on and needs_setup(cfg.get(name) or {}):
+        elif now_on and needs_setup(cfg.get(name) or {}):
             self.set_status(f"{name} needs a key before it can work; "
                             f"there is a box for it below the row.",
                             bad=True)
-        elif name in on:
+        elif now_on:
             self.set_status(f"Using {name}. Press CHECK to see what it "
                             f"has today.")
         else:
             self.set_status(f"No longer using {name}.")
+
+    def on_edit(self, _button=None):
+        """The moves between lists are a file edit, so put the file in
+        front of you rather than leaving you to find its path. The text
+        editor, not the JSON handler: that is usually a browser."""
+        try:
+            ensure_config()
+        except OSError as problem:
+            self.set_status(f"Not opened: {problem.strerror}", bad=True)
+            return
+        editor = Gio.AppInfo.get_default_for_type("text/plain", False)
+        try:
+            opened = editor is not None and editor.launch(
+                [Gio.File.new_for_path(str(CONFIG))],
+                self.get_display().get_app_launch_context())
+        except GLib.Error:
+            opened = False
+        if not opened:
+            self.set_status("No text editor is set for plain text, so "
+                            "open the file yourself.", bad=True)
 
     def on_check(self, _button=None):
         cfg = config()

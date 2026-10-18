@@ -56,6 +56,9 @@ DEFAULTS = {
         "require": {"media_type": "image"},
         "date": "{date}",
         "min_width": 1920,
+        # A square or a portrait would be cropped to a strip. 1.3 is a
+        # little under 4:3.
+        "min_aspect": 1.3,
     },
     "wikipedia": {
         "url": "https://en.wikipedia.org/api/rest_v1/feed/featured"
@@ -65,6 +68,8 @@ DEFAULTS = {
         "id": "{image.title|name|stem}",
         "credit": "{image.description.text} (\u00a9 {image.artist.text})",
         "link": "{image.file_page}",
+        # Some days' picture is a page of a book: see apod.
+        "min_aspect": 1.3,
     },
     "unsplash": {
         "url": "https://api.unsplash.com/photos/random"
@@ -96,7 +101,7 @@ BLURBS = {
     "bing": "One curated photograph a day, titled and located.",
     "apod": "NASA's astronomy picture of the day.",
     "wikipedia": "Wikipedia's picture of the day, fully credited.",
-    "unsplash": "Needs a free access key pasted into its url first.",
+    "unsplash": "Random landscape photographs. Needs a free access key.",
 }
 
 
@@ -182,6 +187,15 @@ def save_config(cfg: dict) -> None:
     tmp.replace(CONFIG)
 
 
+def ensure_config() -> None:
+    """Make sure there is a file to open. One that exists is never touched,
+    not even rewritten with the same text: it is the part of the
+    configuration that is only yours."""
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(FileExistsError), CONFIG.open("x") as handle:
+        handle.write("{}\n")
+
+
 def _rewrite_lists(stored: dict) -> dict:
     """Old `sources` meant "enabled for fetch". Morning is bing-only now;
     the rest of what you had on becomes the elsewhere gallery."""
@@ -262,6 +276,43 @@ def apply_key(spec: dict, token: str, value: str) -> dict:
     if setup is not None:
         out["key"] = setup
     return out
+
+
+def settings_lists(cfg: dict) -> tuple[list[str], list[str]]:
+    """The names under MORNING and under ELSEWHERE in the settings panel.
+
+    A source sits in a section by what it is, not by whether it is switched
+    on. Switching bing off takes it out of `autofetch`, and a section that
+    listed only its members would then move the row to ELSEWHERE, where
+    clicking it fills `gallery` and `autofetch` stays empty for good. So
+    MORNING is `autofetch` plus the shipped morning sources, listed or not;
+    ELSEWHERE is `gallery` plus anything else defined that could be used.
+    """
+    def defined(name) -> bool:
+        return isinstance(name, str) and isinstance(cfg.get(name), dict)
+
+    morning = [name for name in (cfg.get("autofetch") or [])
+               if defined(name)]
+    morning += [name for name in DEFAULTS["autofetch"]
+                if defined(name) and name not in morning]
+    elsewhere = [name for name in (cfg.get("gallery") or [])
+                 if defined(name)]
+    elsewhere += [name for name, spec in cfg.items()
+                  if name not in morning and name not in elsewhere
+                  and isinstance(spec, dict) and spec.get("image")]
+    return morning, elsewhere
+
+
+def toggle_source(cfg: dict, name: str, which: str) -> bool:
+    """Flip `name` in cfg's `which` list ("autofetch" or "gallery") and say
+    whether it is on now. The source's own settings are not touched."""
+    on = [item for item in (cfg.get(which) or []) if isinstance(item, str)]
+    if name in on:
+        on.remove(name)
+    else:
+        on.append(name)
+    cfg[which] = on
+    return name in on
 
 
 def _named(cfg: dict, key: str) -> list[str]:

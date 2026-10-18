@@ -48,7 +48,7 @@ class Shipped(unittest.TestCase):
                                return_value=document), \
              mock.patch.object(sources, "download", side_effect=save), \
              mock.patch.object(sources.random, "randrange", return_value=0):
-            out = sources.fetch_source(name, spec)
+            out = sources.fetch_source(name, spec).path
         self.assertIsNotNone(out, f"{fixture} resolved to no photograph")
         return out.name
 

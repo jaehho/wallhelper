@@ -4,6 +4,7 @@ The network is mocked throughout: these pin the resolution steps and the
 filename the reply turns into, not whether any API is up today.
 """
 
+import http.client
 import json
 import struct
 import time
@@ -11,11 +12,13 @@ import unittest
 import urllib.error
 import zlib
 from pathlib import Path
+from typing import ClassVar
 from unittest import mock
 
 from tests import guard
 from wallhelper import sources
 from wallhelper.library import credits
+from wallhelper.net import FetchError
 from wallhelper.paths import CREDITS, DIR
 
 
@@ -34,10 +37,9 @@ def png(width: int, height: int) -> bytes:
             + chunk(b"IEND", b""))
 
 
-def save(_url, out: Path) -> bool:
+def save(_url, out: Path) -> None:
     """What download would have done, without the network."""
     out.write_bytes(png(3840, 2160))
-    return True
 
 
 class Source(unittest.TestCase):
@@ -54,7 +56,7 @@ class Source(unittest.TestCase):
         with mock.patch.object(sources, "fetch_url",
                                return_value=document), \
              mock.patch.object(sources, "download", side_effect=save):
-            return sources.fetch_source("test", spec)
+            return sources.fetch_source("test", spec).path
 
     def probe(self, spec, reply=None, error=None):
         document = reply if isinstance(reply, bytes) \
@@ -133,7 +135,7 @@ class Fetch(Source):
                 side_effect=urllib.error.URLError("no route")), \
              mock.patch.object(sources, "download", side_effect=save):
             self.assertIsNone(sources.fetch_source("test", {
-                "url": "https://example.com/api", "image": "{path}"}))
+                "url": "https://example.com/api", "image": "{path}"}).path)
 
     def test_a_spec_without_an_image_template_gives_nothing(self):
         self.assertIsNone(self.fetch({"url": "https://example.com"}, {}))
@@ -144,7 +146,7 @@ class Fetch(Source):
              mock.patch.object(sources, "download") as taken:
             self.assertIsNone(sources.fetch_source("test", {
                 "url": "https://example.com/api", "list": "data",
-                "image": "{path}"}))
+                "image": "{path}"}).path)
             taken.assert_not_called()
 
 
@@ -238,13 +240,17 @@ class Probe(Source):
 
 
 class ListSource(Source):
-    def list(self, spec, reply):
+    def listing(self, spec, reply=None, error=None):
         document = reply if isinstance(reply, bytes) \
             else json.dumps(reply).encode()
         with mock.patch.object(sources, "fetch_url",
-                               return_value=document), \
+                               return_value=document,
+                               side_effect=error), \
              mock.patch.object(sources, "download", side_effect=save):
             return sources.list_source("test", spec)
+
+    def list(self, spec, reply):
+        return self.listing(spec, reply).candidates
 
     def test_every_usable_entry_comes_back(self):
         out = self.list({
@@ -292,6 +298,60 @@ class ListSource(Source):
             "credit": "<b>Someone</b>"})
         self.assertEqual(out[0]["credit"], "Someone")
 
+    def test_a_source_that_answers_has_no_complaint(self):
+        self.assertEqual(
+            self.listing({"url": "https://example.com/api", "image": "{p}"},
+                         {"p": "https://e.com/a.jpg"}).complaint, "")
+
+    def test_a_source_that_cannot_be_reached_says_why(self):
+        got = self.listing(
+            {"url": "https://example.com/api", "image": "{p}"},
+            error=urllib.error.URLError("Unauthorized"))
+        self.assertEqual(got, ([], "Unauthorized"))
+
+    def test_a_timeout_says_so(self):
+        got = self.listing({"url": "https://example.com/api", "image": "{p}"},
+                           error=TimeoutError("timed out"))
+        self.assertEqual(got.complaint, "timed out")
+
+    def test_a_reply_cut_short_says_so(self):
+        got = self.listing({"url": "https://example.com/api", "image": "{p}"},
+                           error=http.client.IncompleteRead(b"{"))
+        self.assertEqual(got.complaint, "the transfer was cut short")
+
+    def test_a_reply_that_is_not_json_says_so(self):
+        got = self.listing({"url": "https://example.com/api", "image": "{p}"},
+                           b"<html>")
+        self.assertEqual(got.complaint, "the reply is not JSON")
+
+    def test_nothing_matching_require_says_so(self):
+        got = self.listing({"url": "https://example.com/api",
+                            "list": "data", "image": "{p}",
+                            "require": {"media_type": "image"}},
+                           {"data": [{"p": "/v", "media_type": "video"}]})
+        self.assertEqual(got, ([], "nothing to offer today"))
+
+    def test_a_source_waiting_on_its_key_is_not_asked(self):
+        spec = {"url": "https://api.example.com/x?client_id=PASTE_KEY",
+                "image": "{p}", "key": {"into": "PASTE_KEY"}}
+        with mock.patch.object(sources, "fetch_url") as asked:
+            got = sources.list_source("test", spec)
+        asked.assert_not_called()
+        self.assertEqual(got, ([], "needs a key"))
+
+    def test_a_source_given_its_key_is_asked(self):
+        spec = {"url": "https://api.example.com/x?client_id=abc123",
+                "image": "{p}", "key": {"into": "PASTE_KEY"}}
+        got = self.listing(spec, {"p": "https://e.com/a.jpg"})
+        self.assertEqual(len(got.candidates), 1)
+
+    def test_the_timeout_reaches_the_request(self):
+        with mock.patch.object(sources, "fetch_url",
+                               return_value=b"{}") as asked:
+            sources.list_source(
+                "test", {"url": "https://e.com", "image": "{p}"}, timeout=8)
+        self.assertEqual(asked.call_args.kwargs["timeout"], 8)
+
     def test_listing_never_downloads(self):
         with mock.patch.object(sources, "fetch_url",
                                return_value=b'{"path": "/x.jpg", "id": "x"}'), \
@@ -318,21 +378,202 @@ class Adopt(Source):
         self.assertEqual(credits()[out.name], ("A title", "Someone",
                                                "https://example.com/page"))
 
-    def test_min_width_rejects_a_small_photograph(self):
-        def tiny(_url, out: Path) -> bool:
+    def test_min_width_rejects_a_small_photograph_and_says_how_small(self):
+        def tiny(_url, out: Path) -> None:
             out.write_bytes(png(800, 600))
-            return True
-        with mock.patch.object(sources, "download", side_effect=tiny):
-            self.assertIsNone(sources.adopt(
+        with mock.patch.object(sources, "download", side_effect=tiny), \
+             self.assertRaisesRegex(FetchError, "too small: 800 px"):
+            sources.adopt(
                 "test", {"min_width": 1920},
                 {"image": "https://example.com/s.jpg", "ident": "s",
-                 "date": "20261005"}))
+                 "date": "20261005"})
+        # Nothing of it is left in the collection, or in the ledger.
+        self.assertEqual(list(DIR.glob("*.jpg")), [])
+        self.assertEqual(credits(), {})
 
     def test_a_collision_downloads_nothing_new(self):
         cand = {"image": "https://example.com/x.jpg", "ident": "x",
                 "date": "20261005"}
         first = self.adopt({}, cand)
-        with mock.patch.object(sources, "download") as taken:
-            self.assertIsNone(sources.adopt("test", {}, cand))
-            taken.assert_not_called()
+        with mock.patch.object(sources, "download") as taken, \
+             self.assertRaisesRegex(FetchError, "already in the collection"):
+            sources.adopt("test", {}, cand)
+        taken.assert_not_called()
         self.assertTrue(first.exists())
+
+    def test_a_download_that_fails_says_why(self):
+        with mock.patch.object(sources, "download",
+                               side_effect=FetchError("Unauthorized")), \
+             self.assertRaisesRegex(FetchError, "Unauthorized"):
+            sources.adopt("test", {}, {
+                "image": "https://example.com/x.jpg", "ident": "x"})
+
+    def test_a_walk_over_candidates_goes_on_past_a_failed_one(self):
+        # fetch_source tries the next candidate; the reason is for a click.
+        answers = iter([FetchError("Not Found"), None])
+
+        def flaky(_url, out: Path) -> None:
+            if (answer := next(answers)) is not None:
+                raise answer
+            save(_url, out)
+        spec = {"image": "{p}", "list": ".", "id": "{id}"}
+        with mock.patch.object(
+                sources, "fetch_url",
+                return_value=json.dumps([{"p": "https://e.com/a.jpg",
+                                          "id": "a"},
+                                         {"p": "https://e.com/b.jpg",
+                                          "id": "b"}]).encode()), \
+             mock.patch.object(sources, "download", side_effect=flaky):
+            out = sources.fetch_source(
+                "test", {**spec, "url": "https://e.com"})
+        self.assertIsNotNone(out.path)
+
+
+class Refusal(unittest.TestCase):
+    def test_a_source_with_no_demands_refuses_nothing(self):
+        self.assertEqual(sources.refusal({}, (10, 10000)), "")
+        self.assertEqual(sources.refusal({}, None), "")
+
+    def test_under_the_floor_says_how_wide_it_was(self):
+        spec = {"min_width": 1920}
+        self.assertEqual(sources.refusal(spec, (1600, 900)),
+                         "too small: 1600 px")
+        self.assertEqual(sources.refusal(spec, (1920, 1080)), "")
+
+    def test_a_portrait_and_a_square_are_not_wide_enough(self):
+        spec = {"min_aspect": 1.3}
+        self.assertEqual(sources.refusal(spec, (2160, 3840)),
+                         "not wide enough: 2160 \u00d7 3840")
+        self.assertEqual(sources.refusal(spec, (1600, 1600)),
+                         "not wide enough: 1600 \u00d7 1600")
+
+    def test_four_by_three_and_wider_pass(self):
+        spec = {"min_aspect": 1.3}
+        for size in ((1600, 1200), (1920, 1080), (5000, 1000)):
+            self.assertEqual(sources.refusal(spec, size), "")
+
+    def test_the_floor_is_read_first(self):
+        self.assertEqual(
+            sources.refusal({"min_width": 1920, "min_aspect": 1.3},
+                            (900, 1600)),
+            "too small: 900 px")
+
+    def test_a_size_nobody_could_read_is_refused_when_one_is_demanded(self):
+        self.assertEqual(sources.refusal({"min_width": 1920}, None),
+                         "can't tell its size")
+
+    def test_a_demand_that_is_not_a_number_is_no_demand(self):
+        self.assertEqual(
+            sources.refusal({"min_width": "wide", "min_aspect": None},
+                            (10, 10)), "")
+
+
+class Offer(Source):
+    """The gallery's list: what list_source finds, less what adopt would
+    refuse for its size. Sizes are canned; the head fetch is tested in
+    test_net."""
+
+    SPEC: ClassVar[dict] = {
+        "url": "https://example.com/api", "list": ".", "image": "{p}",
+        "min_width": 1920, "min_aspect": 1.3}
+
+    def offer(self, spec, sizes):
+        reply = json.dumps([{"p": url} for url in sizes]).encode()
+
+        def size_of(url, _timeout):
+            answer = sizes[url]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        with mock.patch.object(sources, "fetch_url", return_value=reply), \
+             mock.patch.object(sources, "remote_size",
+                               side_effect=size_of) as asked:
+            return sources.offer_source("test", spec), asked
+
+    def test_small_and_portrait_and_square_are_not_offered(self):
+        got, _asked = self.offer(self.SPEC, {
+            "https://e.com/ok.jpg": (2560, 1440),
+            "https://e.com/small.jpg": (1600, 900),
+            "https://e.com/tall.jpg": (2160, 3840),
+            "https://e.com/square.jpg": (2000, 2000),
+        })
+        self.assertEqual([c["image"] for c in got.candidates],
+                         ["https://e.com/ok.jpg"])
+        self.assertEqual(got.complaint, "")
+
+    def test_order_is_the_sources_order(self):
+        got, _asked = self.offer(self.SPEC, {
+            f"https://e.com/{n}.jpg": (2560, 1440) for n in "cab"})
+        self.assertEqual([c["image"][-5] for c in got.candidates],
+                         ["c", "a", "b"])
+
+    def test_nothing_fitting_says_why_for_the_first(self):
+        got, _asked = self.offer(self.SPEC, {
+            "https://e.com/small.jpg": (1600, 900),
+            "https://e.com/tall.jpg": (2160, 3840),
+        })
+        self.assertEqual(got, ([], "nothing fits today (too small: 1600 px)"))
+
+    def test_a_url_that_does_not_answer_is_still_offered(self):
+        # Not knowing is not a reason; the click will say what is wrong.
+        got, _asked = self.offer(self.SPEC, {
+            "https://e.com/slow.jpg": FetchError("timed out"),
+            "https://e.com/small.jpg": (1600, 900),
+        })
+        self.assertEqual([c["image"] for c in got.candidates],
+                         ["https://e.com/slow.jpg"])
+
+    def test_a_size_that_cannot_be_read_is_not_offered(self):
+        # adopt would refuse it for the same reason after downloading it.
+        got, _asked = self.offer(self.SPEC, {"https://e.com/odd.webp": None})
+        self.assertEqual(got.candidates, [])
+
+    def test_a_source_that_asks_for_no_size_costs_no_requests(self):
+        got, asked = self.offer({**self.SPEC, "min_width": 0,
+                                 "min_aspect": 0},
+                                {"https://e.com/a.jpg": (10, 10)})
+        asked.assert_not_called()
+        self.assertEqual(len(got.candidates), 1)
+
+    def test_a_source_that_failed_to_list_is_passed_through(self):
+        with mock.patch.object(
+                sources, "fetch_url",
+                side_effect=urllib.error.URLError("timed out")):
+            got = sources.offer_source("test", self.SPEC)
+        self.assertEqual(got, ([], "timed out"))
+
+
+class AdoptShape(Source):
+    def test_a_square_is_refused_where_the_source_wants_wide_ones(self):
+        def square(_url, out: Path) -> None:
+            out.write_bytes(png(1600, 1600))
+        with mock.patch.object(sources, "download", side_effect=square), \
+             self.assertRaisesRegex(FetchError, "not wide enough"):
+            sources.adopt("test", {"min_aspect": 1.3}, {
+                "image": "https://example.com/s.jpg", "ident": "s",
+                "date": "20261005"})
+        self.assertEqual(list(DIR.glob("*.jpg")), [])
+
+
+class Target(Source):
+    CAND: ClassVar[dict] = {"image": "https://example.com/pics/a.jpg",
+                            "ident": "abc", "date": "2026-10-05"}
+
+    def test_it_is_the_file_adopt_writes(self):
+        with mock.patch.object(sources, "download", side_effect=save):
+            kept = sources.adopt("test", {}, self.CAND)
+        self.assertEqual(sources.target("test", self.CAND), kept)
+
+    def test_the_same_candidate_is_always_the_same_file(self):
+        self.assertEqual(sources.target("test", self.CAND),
+                         DIR / "20261005-test-abc.jpg")
+        self.assertEqual(sources.target("test", dict(self.CAND)),
+                         sources.target("test", self.CAND))
+
+    def test_another_source_is_another_file(self):
+        self.assertNotEqual(sources.target("one", self.CAND),
+                            sources.target("two", self.CAND))
+
+    def test_the_suffix_comes_from_the_url_path_not_its_query(self):
+        cand = {**self.CAND, "image": "https://e.com/a.png?width=3840.jpg"}
+        self.assertEqual(sources.target("test", cand).suffix, ".png")

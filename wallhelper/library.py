@@ -13,6 +13,7 @@ import struct
 import subprocess
 import unicodedata
 from pathlib import Path
+from typing import BinaryIO, NamedTuple
 
 from .desktop import active, focused_monitor, push_wallpaper
 from .paths import CREDITS, CURRENT, DIR, IMAGE_SUFFIXES, THUMBS
@@ -52,23 +53,12 @@ def collection() -> list[Path]:
     return images(DIR)
 
 
-def trash(path: Path) -> bool:
-    """Send to the desktop wastebasket, not unlink.
+def in_collection(path: Path, folder: Path = DIR) -> bool:
+    """Whether the file sits directly in the collection folder.
 
-    A person deleting a photograph can change their mind."""
-    try:
-        done = subprocess.run(["gio", "trash", str(path)],
-                              capture_output=True, timeout=15, check=False)
-    except (OSError, subprocess.SubprocessError):
-        pass
-    else:
-        if done.returncode == 0:
-            return True
-    try:
-        path.unlink()              # no gio, no trash -- still honour the ask
-    except OSError:
-        return False
-    return True
+    Symlinks are followed first, because that is where a delete would
+    land: a link in the folder to a file elsewhere is not in it."""
+    return path.resolve().parent == folder.resolve()
 
 
 # JPEG markers: SOF0-SOF15 carry the frame size; DHT/JPG/DAC sit among them.
@@ -78,6 +68,11 @@ _JPEG_SOF_LO = 0xC0
 _JPEG_SOF_HI = 0xCF
 _JPEG_SOF_SKIP = (0xC4, 0xC8, 0xCC)
 _YYYYMMDD_LEN = 8
+_WEBP_HEAD_LEN = 12            # "RIFF", a size, "WEBP"
+_ORIG_PATH = "trash::orig-path="
+_GIO_TIMEOUT_S = 15
+# What gui.thumbs writes: '<photo>-<w>x<h>.png'.
+_CACHE_NAME = re.compile(r"(?P<photo>.+)-\d+x\d+\.png")
 
 
 # --- credits --------------------------------------------------------------
@@ -196,25 +191,54 @@ def measure(path: Path) -> tuple[int, int] | None:
     """
     try:
         with path.open("rb") as handle:
-            head = handle.read(26)
-            if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
-                width, height = struct.unpack(">II", head[16:24])
-                return int(width), int(height)
-            if head[:2] != b"\xff\xd8":
+            return measure_stream(handle)
+    except OSError:
+        return None
+
+
+def measure_stream(handle: BinaryIO) -> tuple[int, int] | None:
+    """measure() for anything seekable, such as the first bytes of a file
+    that is still a URL. None when they do not reach the size."""
+    try:
+        head = handle.read(26)
+        if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+            width, height = struct.unpack(">II", head[16:24])
+            return int(width), int(height)
+        if head[:2] != b"\xff\xd8":
+            return None
+        handle.seek(2)
+        while True:
+            marker = handle.read(2)
+            if len(marker) < _JPEG_MARKER_LEN or marker[0] != _JPEG_MARKER_PREFIX:
                 return None
-            handle.seek(2)
-            while True:
-                marker = handle.read(2)
-                if len(marker) < _JPEG_MARKER_LEN or marker[0] != _JPEG_MARKER_PREFIX:
-                    return None
-                length = struct.unpack(">H", handle.read(2))[0]
-                if (_JPEG_SOF_LO <= marker[1] <= _JPEG_SOF_HI
-                        and marker[1] not in _JPEG_SOF_SKIP):
-                    height, width = struct.unpack(">HH", handle.read(5)[1:5])
-                    return int(width), int(height)
-                handle.seek(length - 2, 1)
+            length = struct.unpack(">H", handle.read(2))[0]
+            if (_JPEG_SOF_LO <= marker[1] <= _JPEG_SOF_HI
+                    and marker[1] not in _JPEG_SOF_SKIP):
+                height, width = struct.unpack(">HH", handle.read(5)[1:5])
+                return int(width), int(height)
+            handle.seek(length - 2, 1)
     except (OSError, struct.error, ValueError, IndexError):
         return None
+
+
+def is_image(path: Path) -> bool:
+    """Whether the file is a photograph, by its name and its first bytes.
+
+    measure() answers for PNG and JPEG. WebP and BMP, which the sources can
+    also hand us, are told apart by their signatures; a file called .jpg
+    that holds text is neither.
+    """
+    if path.suffix.lower() not in IMAGE_SUFFIXES:
+        return False
+    if measure(path) is not None:
+        return True
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(_WEBP_HEAD_LEN)
+    except OSError:
+        return False
+    return head[:2] == b"BM" or (head[:4] == b"RIFF"
+                                 and head[8:12] == b"WEBP")
 
 
 def set_wallpaper(image: Path, push: bool = True) -> None:
@@ -279,21 +303,223 @@ def migrate_collection() -> list[str]:
     return moved
 
 
-def forget(names: list[str]) -> None:
-    """Drop ledger lines whose file is gone, so .credits doesn't outgrow
-    the collection it describes."""
-    if not names:
-        return
-    gone = {name for name in names if not (DIR / name).exists()}
-    if not gone:
-        return
-    for name in gone:
-        (THUMBS / f"{name}.png").unlink(missing_ok=True)
+# --- deleting -------------------------------------------------------------
+
+
+TRASHED = "trashed"
+UNLINKED = "unlinked"
+
+
+class Trashed(NamedTuple):
+    """One thing in the desktop wastebasket."""
+
+    uri: str          # what gio addresses it by
+    was: Path         # where it sat before
+    when: str         # deletion date; ISO, so text order is time order
+
+
+class Deleted(NamedTuple):
+    """What delete_photo did."""
+
+    path: Path
+    title: str        # the caption's title, else the file's stem
+    how: str          # TRASHED, or UNLINKED when the wastebasket refused
+
+
+def _gio(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run gio. OSError when it cannot be run or does not answer in time;
+    a non-zero exit is for the caller to read."""
     try:
-        kept = [line for line in CREDITS.read_text().splitlines()
-                if line.split("\t")[0] not in gone]
+        return subprocess.run(["gio", *args], capture_output=True,
+                              text=True, errors="replace",
+                              timeout=_GIO_TIMEOUT_S, check=False)
+    except subprocess.SubprocessError as err:
+        raise OSError(str(err)) from err
+
+
+def trash(path: Path) -> str:
+    """Send to the desktop wastebasket, not unlink. Says which happened.
+
+    A person deleting a photograph can change their mind, so the
+    wastebasket comes first. When it won't take the file (no gio, or a
+    mount it can't trash from) the ask is still honoured and the answer is
+    UNLINKED, so nobody tells the user about a Trash that doesn't hold it.
+
+    Only the collection's own photographs: `delete` acts on whatever is on
+    screen, and that can be a file wallhelper never owned. ValueError for
+    anything else; OSError if the file is still there.
+    """
+    if not in_collection(path):
+        msg = f"{path} is outside the collection ({DIR}), so not deleting it"
+        raise ValueError(msg)
+    try:
+        done = _gio("trash", str(path))
+    except OSError:
+        pass
+    else:
+        if done.returncode == 0:
+            return TRASHED
+    path.unlink()                  # no gio, no trash -- still honour the ask
+    return UNLINKED
+
+
+def parse_trash(listing: str) -> list[Trashed]:
+    """The wastebasket's entries out of `gio list -u -a
+    trash::orig-path,trash::deletion-date trash:///`, one per line:
+
+        trash:///a%20b.jpg  2  (regular)  trash::orig-path=/x/a b.jpg
+        trash::deletion-date=2026-10-18T01:19:06
+
+    A line that does not say where its entry came from is skipped.
+    """
+    out = []
+    for line in listing.splitlines():
+        uri, _, rest = line.partition("\t")
+        attrs = rest.rpartition("\t")[2]
+        orig, _, when = attrs.partition(" trash::deletion-date=")
+        if uri and orig.startswith(_ORIG_PATH):
+            out.append(Trashed(uri, Path(orig.removeprefix(_ORIG_PATH)), when))
+    return out
+
+
+def in_trash() -> list[Trashed]:
+    """What the wastebasket holds. OSError when gio cannot say.
+
+    That is not an empty Trash, and whoever would act on "nothing there"
+    must not take it for one."""
+    done = _gio("list", "-u", "-a", "trash::orig-path,trash::deletion-date",
+                "trash:///")
+    if done.returncode != 0:
+        msg = done.stderr.strip() or "gio could not list the Trash"
+        raise OSError(msg)
+    return parse_trash(done.stdout)
+
+
+def restore(path: Path) -> None:
+    """Put a photograph back where it was, out of the Trash. OSError when
+    the Trash does not have it or gio will not give it up.
+
+    If it was trashed more than once, the latest comes back. Its ledger
+    line and thumbnails never left (see prune), so it returns captioned."""
+    here = [entry for entry in in_trash() if _same_place(entry.was, path)]
+    if not here:
+        msg = f"{path.name} is not in the Trash"
+        raise FileNotFoundError(msg)
+    latest = sorted(here, key=lambda entry: entry.when)[-1]
+    done = _gio("trash", "--restore", latest.uri)
+    if done.returncode != 0:
+        msg = done.stderr.strip() or f"gio could not restore {path.name}"
+        raise OSError(msg)
+    # gvfs's view of the Trash goes stale for a restored name: trash the
+    # photograph again and `gio list` never shows it, nor will --restore
+    # find it, until something lists the Trash once more. Measured with a
+    # private gvfsd-trash: five restore/trash cycles list correctly with
+    # this line, and the second cycle fails without it.
+    with contextlib.suppress(OSError):
+        in_trash()
+
+
+def cache_owner(cached: str) -> str | None:
+    """The photograph a cached thumbnail was cut from, from its filename
+    ('<photo>-<w>x<h>.png', see gui.thumbs). None for the cache entries
+    that belong to no photograph: Elsewhere's remote-*, temp files."""
+    match = _CACHE_NAME.fullmatch(cached)
+    if match is None or cached.startswith("."):
+        return None
+    photo = match["photo"]
+    return photo if Path(photo).suffix.lower() in IMAGE_SUFFIXES else None
+
+
+def _same_place(one: Path, other: Path) -> bool:
+    """Same name in the same folder, folders taken with symlinks followed
+    (the file itself may be gone)."""
+    return (one.name == other.name
+            and one.parent.resolve() == other.parent.resolve())
+
+
+def names_in_trash(entries: list[Trashed], folder: Path = DIR) -> set[str]:
+    """Filenames of the entries that were trashed out of `folder`."""
+    where = folder.resolve()
+    return {entry.was.name for entry in entries
+            if entry.was.parent.resolve() == where}
+
+
+def _is_gone(name: str, present: set[str], trashed: set[str]) -> bool:
+    return name not in present and name not in trashed
+
+
+def _prune_ledger(present: set[str], trashed: set[str]) -> None:
+    try:
+        lines = CREDITS.read_text().splitlines()
+        kept = [line for line in lines
+                if not _is_gone(line.split("\t")[0], present, trashed)]
+        if len(kept) == len(lines):
+            return
         tmp = CREDITS.with_name(CREDITS.name + ".new")
         tmp.write_text("".join(line + "\n" for line in kept))
         tmp.replace(CREDITS)
     except OSError:
         pass
+
+
+def _prune_thumbnails(present: set[str], trashed: set[str]) -> None:
+    try:
+        cached = list(THUMBS.iterdir())
+    except OSError:
+        return
+    for path in cached:
+        owner = cache_owner(path.name)
+        if owner and _is_gone(owner, present, trashed):
+            with contextlib.suppress(OSError):
+                path.unlink()
+
+
+def prune() -> None:
+    """Drop the ledger line and cached thumbnails of every photograph that
+    is gone from the collection and from the wastebasket, so neither
+    outgrows the collection it describes.
+
+    A photograph in the Trash keeps both: one restored from there has its
+    title and byline back, and its tile does not wait on a decode. Files
+    removed outside wallhelper are caught here too. It runs when the
+    window opens, not after a delete: right after one, gvfs's list of the
+    Trash can still be missing the photograph just trashed.
+
+    Nothing is dropped when it cannot be sure. Losing a caption is not
+    undoable, and keeping a stale line is free: so not when the Trash
+    cannot be read, and not when the folder looks empty, which is also how
+    an unmounted drive looks. The folder is read before the Trash, so a
+    photograph deleted in between still counts as present rather than as
+    missing from both lists.
+    """
+    try:
+        present = {entry.name for entry in DIR.iterdir()}
+        trashed = names_in_trash(in_trash())
+    except OSError:
+        return
+    if not present:
+        return
+    _prune_ledger(present, trashed)
+    _prune_thumbnails(present, trashed)
+
+
+def delete_photo(path: Path) -> Deleted:
+    """Take one photograph out of the collection and put its neighbour on
+    the wall. ValueError and OSError as for trash().
+
+    The neighbour is the next one along the grid, so deleting a run walks
+    along it rather than throwing you back to the start every time.
+    """
+    title = label(path)["title"] or path.stem
+    everything = collection()
+    index = next((i for i, other in enumerate(everything)
+                  if other.name == path.name), 0)
+    following = [other for other in everything if other.name != path.name]
+
+    how = trash(path)
+    if following:
+        # The photograph is gone either way; a neighbour that vanished too
+        # leaves the wall as it was rather than undoing the answer.
+        with contextlib.suppress(OSError):
+            set_wallpaper(following[min(index, len(following) - 1)])
+    return Deleted(path, title, how)
