@@ -13,6 +13,8 @@ from ..config import (
     config,
     needs_setup,
     save_config,
+    settings_lists,
+    toggle_source,
 )
 from ..paths import CONFIG
 from ..sources import host, probe_source
@@ -119,29 +121,24 @@ class SettingsPanel(Gtk.Revealer):
         self.set_child(panel)
 
     def fill_sources(self):
-        """MORNING lists the autofetch names; ELSEWHERE the gallery and
-        anything else defined that you could switch on."""
+        """MORNING lists the morning sources, on or off; ELSEWHERE the
+        gallery and anything else defined that you could switch on."""
         for box in (self.auto_list, self.gallery_list):
             while (child := box.get_first_child()):
                 box.remove(child)
 
         cfg = config()
-        auto = [name for name in (cfg.get("autofetch") or [])
-                if isinstance(cfg.get(name), dict)]
-        gallery = [name for name in (cfg.get("gallery") or [])
-                   if isinstance(cfg.get(name), dict)]
-        rest = [name for name, spec in cfg.items()
-                if name not in auto and name not in gallery
-                and isinstance(spec, dict) and spec.get("image")]
+        morning, elsewhere = settings_lists(cfg)
         self.source_notes = {}
         self.source_rows = {}
         self.first_row = None
 
-        for name in auto:
-            self._row(self.auto_list, name, cfg[name], True, "autofetch")
-        for name in gallery + rest:
-            self._row(self.gallery_list, name, cfg[name], name in gallery,
-                      "gallery")
+        for name in morning:
+            self._row(self.auto_list, name, cfg[name],
+                      name in (cfg.get("autofetch") or []), "autofetch")
+        for name in elsewhere:
+            self._row(self.gallery_list, name, cfg[name],
+                      name in (cfg.get("gallery") or []), "gallery")
 
     def _row(self, box, name, spec, on, which):
         row = Gtk.Button()
@@ -236,7 +233,7 @@ class SettingsPanel(Gtk.Revealer):
             return
         cfg = config()
         cfg[name] = apply_key(cfg.get(name) or {}, token, value)
-        key = "autofetch" if name == "bing" else "gallery"
+        key = "autofetch" if name in settings_lists(cfg)[0] else "gallery"
         on = [item for item in (cfg.get(key) or [])
               if isinstance(item, str)]
         if name not in on:
@@ -256,13 +253,7 @@ class SettingsPanel(Gtk.Revealer):
 
     def on_toggle_source(self, _button, name, which):
         cfg = config()
-        on = [item for item in (cfg.get(which) or [])
-              if isinstance(item, str)]
-        if name in on:
-            on.remove(name)
-        else:
-            on.append(name)
-        cfg[which] = on
+        now_on = toggle_source(cfg, name, which)
         try:
             save_config(cfg)
         except OSError as problem:
@@ -277,11 +268,11 @@ class SettingsPanel(Gtk.Revealer):
             self.set_status("No morning source is switched on. "
                             "Tomorrow\u2019s fetch will have nowhere to look.",
                             bad=True)
-        elif name in on and needs_setup(cfg.get(name) or {}):
+        elif now_on and needs_setup(cfg.get(name) or {}):
             self.set_status(f"{name} needs a key before it can work; "
                             f"there is a box for it below the row.",
                             bad=True)
-        elif name in on:
+        elif now_on:
             self.set_status(f"Using {name}. Press CHECK to see what it "
                             f"has today.")
         else:

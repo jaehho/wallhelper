@@ -71,6 +71,67 @@ class Named(unittest.TestCase):
         self.assertEqual(cfg.gallery_sources(), ["apod"])
 
 
+class Sections(unittest.TestCase):
+    """Which section of the settings panel a source's row sits in."""
+
+    def setUp(self):
+        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG.unlink(missing_ok=True)
+        self.addCleanup(CONFIG.unlink, missing_ok=True)
+
+    def test_a_fresh_config_splits_morning_from_elsewhere(self):
+        morning, elsewhere = cfg.settings_lists(cfg.config())
+        self.assertEqual(morning, ["bing"])
+        self.assertEqual(elsewhere, ["apod", "wikipedia", "unsplash"])
+
+    def test_switching_bing_off_leaves_its_row_under_morning(self):
+        # One click on bing used to empty `autofetch`, which moved the row
+        # to ELSEWHERE, where clicking it only ever filled `gallery`.
+        # The panel re-reads the file after every click, so this does too.
+        full = cfg.config()
+        self.assertFalse(cfg.toggle_source(full, "bing", "autofetch"))
+        cfg.save_config(full)
+
+        again = cfg.config()
+        self.assertEqual(again["autofetch"], [])
+        morning, elsewhere = cfg.settings_lists(again)
+        self.assertIn("bing", morning)
+        self.assertNotIn("bing", elsewhere)
+
+    def test_a_second_click_switches_bing_back_on(self):
+        full = cfg.config()
+        cfg.toggle_source(full, "bing", "autofetch")
+        cfg.save_config(full)
+
+        full = cfg.config()
+        self.assertTrue(cfg.toggle_source(full, "bing", "autofetch"))
+        cfg.save_config(full)
+        self.assertEqual(cfg.autofetch_sources(), ["bing"])
+
+    def test_a_morning_source_of_your_own_is_listed_under_morning(self):
+        CONFIG.write_text(json.dumps({
+            "autofetch": ["bing", "mine"],
+            "mine": {"image": "{u}"},
+        }))
+        morning, elsewhere = cfg.settings_lists(cfg.config())
+        self.assertEqual(morning, ["bing", "mine"])
+        self.assertNotIn("mine", elsewhere)
+
+    def test_a_defined_source_in_neither_list_is_offered_elsewhere(self):
+        CONFIG.write_text(json.dumps({"mine": {"image": "{u}"}}))
+        morning, elsewhere = cfg.settings_lists(cfg.config())
+        self.assertNotIn("mine", morning)
+        self.assertIn("mine", elsewhere)
+
+    def test_a_name_with_no_source_behind_it_is_skipped(self):
+        CONFIG.write_text(json.dumps({
+            "autofetch": ["bing", "ghost"], "gallery": ["ghost"],
+        }))
+        morning, elsewhere = cfg.settings_lists(cfg.config())
+        self.assertEqual(morning, ["bing"])
+        self.assertNotIn("ghost", elsewhere)
+
+
 class Migrate(unittest.TestCase):
     def setUp(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)

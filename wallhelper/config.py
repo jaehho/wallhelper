@@ -264,6 +264,43 @@ def apply_key(spec: dict, token: str, value: str) -> dict:
     return out
 
 
+def settings_lists(cfg: dict) -> tuple[list[str], list[str]]:
+    """The names under MORNING and under ELSEWHERE in the settings panel.
+
+    A source sits in a section by what it is, not by whether it is switched
+    on. Switching bing off takes it out of `autofetch`, and a section that
+    listed only its members would then move the row to ELSEWHERE, where
+    clicking it fills `gallery` and `autofetch` stays empty for good. So
+    MORNING is `autofetch` plus the shipped morning sources, listed or not;
+    ELSEWHERE is `gallery` plus anything else defined that could be used.
+    """
+    def defined(name) -> bool:
+        return isinstance(name, str) and isinstance(cfg.get(name), dict)
+
+    morning = [name for name in (cfg.get("autofetch") or [])
+               if defined(name)]
+    morning += [name for name in DEFAULTS["autofetch"]
+                if defined(name) and name not in morning]
+    elsewhere = [name for name in (cfg.get("gallery") or [])
+                 if defined(name)]
+    elsewhere += [name for name, spec in cfg.items()
+                  if name not in morning and name not in elsewhere
+                  and isinstance(spec, dict) and spec.get("image")]
+    return morning, elsewhere
+
+
+def toggle_source(cfg: dict, name: str, which: str) -> bool:
+    """Flip `name` in cfg's `which` list ("autofetch" or "gallery") and say
+    whether it is on now. The source's own settings are not touched."""
+    on = [item for item in (cfg.get(which) or []) if isinstance(item, str)]
+    if name in on:
+        on.remove(name)
+    else:
+        on.append(name)
+    cfg[which] = on
+    return name in on
+
+
 def _named(cfg: dict, key: str) -> list[str]:
     return [name for name in (cfg.get(key) or [])
             if isinstance(cfg.get(name), dict) and cfg[name].get("image")]
