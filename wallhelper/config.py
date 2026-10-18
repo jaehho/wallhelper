@@ -68,6 +68,8 @@ DEFAULTS = {
         "id": "{image.title|name|stem}",
         "credit": "{image.description.text} (\u00a9 {image.artist.text})",
         "link": "{image.file_page}",
+        # Some days' picture is a page of a book: see apod.
+        "min_aspect": 1.3,
     },
     "unsplash": {
         "url": "https://api.unsplash.com/photos/random"
