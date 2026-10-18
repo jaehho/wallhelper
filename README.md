@@ -85,7 +85,7 @@ Two name lists decide what a source is for:
 Unsplash takes `count=12` so Elsewhere has a grid; it needs a free access key
 pasted into its url. Switch sources on in the settings panel, which also has a
 **CHECK** button that asks every source what it has today without downloading
-it.
+it, and an **EDIT** button that opens `config.json` in your text editor.
 
 A source needing an API key declares where to get one, and the panel then offers
 the signup link and a box to paste into; the key goes wherever the placeholder

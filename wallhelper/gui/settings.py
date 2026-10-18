@@ -11,6 +11,7 @@ from ..config import (
     BLURBS,
     apply_key,
     config,
+    ensure_config,
     needs_setup,
     save_config,
     settings_lists,
@@ -20,7 +21,7 @@ from ..paths import CONFIG
 from ..sources import host, probe_source
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gio, GLib, Gtk, Pango  # noqa: E402
 
 
 class SettingsPanel(Gtk.Revealer):
@@ -101,12 +102,7 @@ class SettingsPanel(Gtk.Revealer):
         rule.add_css_class("hairline")
         column.append(rule)
 
-        path = Gtk.Label(
-            label=str(CONFIG).replace(str(Path.home()), "~"),
-            xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR,
-            selectable=True)
-        path.add_css_class("footnote")
-        column.append(path)
+        column.append(self.config_row())
 
         self.fill_sources()
 
@@ -120,6 +116,25 @@ class SettingsPanel(Gtk.Revealer):
         panel.append(scroller)
 
         self.set_child(panel)
+
+    def config_row(self):
+        """Where the file is, and a way to open it."""
+        path = Gtk.Label(
+            label=str(CONFIG).replace(str(Path.home()), "~"),
+            xalign=0, wrap=True, wrap_mode=Pango.WrapMode.CHAR,
+            selectable=True, hexpand=True, valign=Gtk.Align.CENTER)
+        path.add_css_class("footnote")
+        edit = Gtk.Button(
+            label="EDIT", valign=Gtk.Align.CENTER,
+            tooltip_text="Open config.json in your text editor",
+        )
+        edit.add_css_class("plate-action")
+        edit.set_cursor(self.pointer)
+        edit.connect("clicked", self.on_edit)
+        row = Gtk.Box(spacing=16)
+        row.append(path)
+        row.append(edit)
+        return row
 
     def fill_sources(self):
         """MORNING lists the morning sources, on or off; ELSEWHERE the
@@ -278,6 +293,26 @@ class SettingsPanel(Gtk.Revealer):
                             f"has today.")
         else:
             self.set_status(f"No longer using {name}.")
+
+    def on_edit(self, _button=None):
+        """The moves between lists are a file edit, so put the file in
+        front of you rather than leaving you to find its path. The text
+        editor, not the JSON handler: that is usually a browser."""
+        try:
+            ensure_config()
+        except OSError as problem:
+            self.set_status(f"Not opened: {problem.strerror}", bad=True)
+            return
+        editor = Gio.AppInfo.get_default_for_type("text/plain", False)
+        try:
+            opened = editor is not None and editor.launch(
+                [Gio.File.new_for_path(str(CONFIG))],
+                self.get_display().get_app_launch_context())
+        except GLib.Error:
+            opened = False
+        if not opened:
+            self.set_status("No text editor is set for plain text, so "
+                            "open the file yourself.", bad=True)
 
     def on_check(self, _button=None):
         cfg = config()

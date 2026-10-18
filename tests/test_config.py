@@ -132,6 +132,24 @@ class Sections(unittest.TestCase):
         self.assertNotIn("ghost", elsewhere)
 
 
+class Edit(unittest.TestCase):
+    def setUp(self):
+        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG.unlink(missing_ok=True)
+        self.addCleanup(CONFIG.unlink, missing_ok=True)
+
+    def test_a_missing_file_is_made_empty_and_valid(self):
+        cfg.ensure_config()
+        self.assertEqual(json.loads(CONFIG.read_text()), {})
+        self.assertEqual(cfg.config()["autofetch"], cfg.DEFAULTS["autofetch"])
+
+    def test_the_file_you_wrote_is_left_exactly_as_it_was(self):
+        text = '{ "autofetch": [],\n  "mine": {"image": "{u}"} }\n'
+        CONFIG.write_text(text)
+        cfg.ensure_config()
+        self.assertEqual(CONFIG.read_text(), text)
+
+
 class Migrate(unittest.TestCase):
     def setUp(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)

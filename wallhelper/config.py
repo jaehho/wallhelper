@@ -182,6 +182,15 @@ def save_config(cfg: dict) -> None:
     tmp.replace(CONFIG)
 
 
+def ensure_config() -> None:
+    """Make sure there is a file to open. One that exists is never touched,
+    not even rewritten with the same text: it is the part of the
+    configuration that is only yours."""
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(FileExistsError), CONFIG.open("x") as handle:
+        handle.write("{}\n")
+
+
 def _rewrite_lists(stored: dict) -> dict:
     """Old `sources` meant "enabled for fetch". Morning is bing-only now;
     the rest of what you had on becomes the elsewhere gallery."""
