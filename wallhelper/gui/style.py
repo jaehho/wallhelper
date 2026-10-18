@@ -118,6 +118,14 @@ def stylesheet(colors: dict[str, str]) -> str:
         letter-spacing: 1.5px; color: {colors['overlay2']};
     }}
 
+    /* On a tile already in the collection. A word, not a colour. */
+    .thumb-mark {{
+        font-family: {DATA}; font-size: 9px; font-weight: 600;
+        letter-spacing: 1.2px; color: {colors['text']};
+        background: alpha({colors['crust']}, 0.8);
+        padding: 1px 5px; margin: 0 0 4px 4px; border-radius: 2px;
+    }}
+
     /* A source with nothing to show, and why: quieter than the label it
        sits under, and not coloured like an alarm. */
     .elsewhere-note {{

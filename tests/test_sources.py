@@ -547,3 +547,27 @@ class AdoptShape(Source):
                 "image": "https://example.com/s.jpg", "ident": "s",
                 "date": "20261005"})
         self.assertEqual(list(DIR.glob("*.jpg")), [])
+
+
+class Target(Source):
+    CAND: ClassVar[dict] = {"image": "https://example.com/pics/a.jpg",
+                            "ident": "abc", "date": "2026-10-05"}
+
+    def test_it_is_the_file_adopt_writes(self):
+        with mock.patch.object(sources, "download", side_effect=save):
+            kept = sources.adopt("test", {}, self.CAND)
+        self.assertEqual(sources.target("test", self.CAND), kept)
+
+    def test_the_same_candidate_is_always_the_same_file(self):
+        self.assertEqual(sources.target("test", self.CAND),
+                         DIR / "20261005-test-abc.jpg")
+        self.assertEqual(sources.target("test", dict(self.CAND)),
+                         sources.target("test", self.CAND))
+
+    def test_another_source_is_another_file(self):
+        self.assertNotEqual(sources.target("one", self.CAND),
+                            sources.target("two", self.CAND))
+
+    def test_the_suffix_comes_from_the_url_path_not_its_query(self):
+        cand = {**self.CAND, "image": "https://e.com/a.png?width=3840.jpg"}
+        self.assertEqual(sources.target("test", cand).suffix, ".png")

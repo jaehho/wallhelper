@@ -89,7 +89,8 @@ class Window(Adw.ApplicationWindow):
         corner.append(close)
         outer.append(top)
 
-        self.elsewhere = ElsewhereBar(self.pointer, self.on_adopt, self.toast)
+        self.elsewhere = ElsewhereBar(
+            self.pointer, self.on_adopt, self.toast, self.on_set)
         outer.append(self.elsewhere)
 
         self.grid = CollectionGrid(self.pointer, self.on_pick)
@@ -194,6 +195,7 @@ class Window(Adw.ApplicationWindow):
         self.plate.refresh(self.current, size)
         self.url = self.plate.url
         self.grid.refresh(self.current)
+        self.elsewhere.refresh_marks()
 
     def push(self, image):
         """Serialised, latest-wins. Holding an arrow down otherwise queues
@@ -217,6 +219,11 @@ class Window(Adw.ApplicationWindow):
             return
         self.push(path)
         self.refresh(path)
+
+    def on_set(self, path):
+        """An Elsewhere tile the collection already holds: nothing to save,
+        so it is picked like any other photograph."""
+        self.on_pick(None, path)
 
     def on_adopt(self, path, _cand):
         try:

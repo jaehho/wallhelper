@@ -99,6 +99,9 @@ still holding its key placeholder gets a muted line under the row in place of
 silence (`UNSPLASH — needs a key`, `APOD — timed out`, `DENIED —
 Unauthorized`), and a placeholder is never sent to the API.
 
+A tile the collection already holds says SAVED, and choosing it sets that
+photograph instead of fetching it again.
+
 Your changes live in `~/.config/wallhelper/config.json`, and only your changes —
 the shipped sources stay shipped, so they keep improving.
 

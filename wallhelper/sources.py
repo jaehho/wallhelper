@@ -258,23 +258,31 @@ def offer_source(name: str, spec: dict, timeout: int = 30) -> Listing:
     return Listing([], f"nothing fits today ({refusals[0]})")
 
 
-def adopt(name: str, spec: dict, cand: dict) -> Path:
-    """Download one candidate into the collection and remember who made it.
-
-    Same filename rules as the daily fetch: {day}-{name}-{ident}{suffix},
-    with the day read back out of the candidate's own date. FetchError,
-    saying why, when it was not kept.
-    """
+def target(name: str, cand: dict) -> Path:
+    """Where adopt keeps a candidate: {day}-{name}-{ident}{suffix} in the
+    collection, with the day read back out of the candidate's own date.
+    The same candidate is always the same file, which is how the gallery
+    knows it already has one."""
     src = cand.get("image") or ""
-    if not src:
-        msg = "no image to fetch"
-        raise FetchError(msg)
     ident = cand.get("ident") or time.strftime("%H%M%S")
     day = re.sub(r"\D", "", str(cand.get("date") or ""))
     if len(day) != _YYYYMMDD_LEN:
         day = time.strftime("%Y%m%d")
     suffix = Path(urllib.parse.urlparse(src).path).suffix or ".jpg"
-    out = DIR / f"{day}-{name}-{ident}{suffix}"
+    return DIR / f"{day}-{name}-{ident}{suffix}"
+
+
+def adopt(name: str, spec: dict, cand: dict) -> Path:
+    """Download one candidate into the collection and remember who made it.
+
+    Same filename rules as the daily fetch (see target). FetchError, saying
+    why, when it was not kept.
+    """
+    src = cand.get("image") or ""
+    if not src:
+        msg = "no image to fetch"
+        raise FetchError(msg)
+    out = target(name, cand)
     if out.exists():
         msg = "already in the collection"
         raise FetchError(msg)

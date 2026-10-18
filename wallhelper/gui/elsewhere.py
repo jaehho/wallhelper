@@ -2,7 +2,8 @@
 
 A short row of thumbs sits above the collection. MORE opens the full
 gallery. Choosing one saves it into the collection and makes it the
-wallpaper -- one action, because that is the only reason you are here.
+wallpaper -- one action, because that is the only reason you are here. A
+tile already in the collection says SAVED, and choosing it only sets it.
 
 Each source is asked on its own thread and paints when it answers, so a
 slow one holds back nobody; one that has nothing to show says why in a
@@ -17,7 +18,7 @@ import gi
 
 from ..config import config, gallery_sources
 from ..net import FetchError, describe
-from ..sources import Listing, adopt, offer_source
+from ..sources import Listing, adopt, offer_source, target
 from .style import GRID_H, GRID_W, LONG_TOAST_SECONDS, THUMB_H, THUMB_W
 from .thumbs import remote_thumbnail
 
@@ -30,12 +31,13 @@ SOURCE_TIMEOUT_S = 8      # a source slower than this is a source down
 
 
 class ElsewhereBar(Gtk.Box):
-    def __init__(self, pointer, on_adopt, on_toast):
+    def __init__(self, pointer, on_adopt, on_toast, on_set):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("elsewhere-row")
         self.pointer = pointer
         self.on_adopt = on_adopt
         self.on_toast = on_toast
+        self.on_set = on_set
         self.cands: list[dict] = []
         self.expanded = False
         self.generation = 0        # a reload invalidates the one before
@@ -43,6 +45,7 @@ class ElsewhereBar(Gtk.Box):
         # Built once per candidate and size: painting again, as the next
         # source answers, must not start the downloads over.
         self.tiles: dict[tuple[str, str, int], Gtk.Button] = {}
+        self.marks: list[tuple[dict, Gtk.Label]] = []     # SAVED, per tile
 
         head = Gtk.Box(spacing=14, valign=Gtk.Align.CENTER)
         self.append(head)
@@ -95,6 +98,7 @@ class ElsewhereBar(Gtk.Box):
         self.generation += 1
         self.answers = {}
         self.tiles = {}
+        self.marks = []
         if not names:
             self._show()
             return
@@ -157,8 +161,15 @@ class ElsewhereBar(Gtk.Box):
             width_request=wide, height_request=high,
         )
         pic.add_css_class("thumb")
+        mark = Gtk.Label(label="SAVED", halign=Gtk.Align.START,
+                         valign=Gtk.Align.END, can_target=False)
+        mark.add_css_class("thumb-mark")
+        self.marks.append((cand, mark))
+        mark.set_visible(self.has(cand))
+        face = Gtk.Overlay(child=pic)
+        face.add_overlay(mark)
         button = Gtk.Button(
-            child=pic, hexpand=False, vexpand=False,
+            child=face, hexpand=False, vexpand=False,
             valign=Gtk.Align.START,
         )
         button.add_css_class("grid-tile")
@@ -171,6 +182,16 @@ class ElsewhereBar(Gtk.Box):
         ).start()
         return button
 
+    def has(self, cand: dict) -> bool:
+        """Whether the collection already holds this candidate."""
+        return target(cand.get("name") or "", cand).exists()
+
+    def refresh_marks(self):
+        """SAVED follows the folder, which a delete or an undo changes
+        without asking the sources anything."""
+        for cand, mark in self.marks:
+            mark.set_visible(self.has(cand))
+
     def _decode(self, cand, pic, wide, high):
         buf = remote_thumbnail(cand.get("image") or "", wide, high)
         if buf is not None:
@@ -178,6 +199,9 @@ class ElsewhereBar(Gtk.Box):
 
     def _pick(self, _button, cand: dict):
         name = cand.get("name") or ""
+        if self.has(cand):
+            self.on_set(target(name, cand))
+            return
         spec = config().get(name) or {}
         self.on_toast("Saving…")
 
