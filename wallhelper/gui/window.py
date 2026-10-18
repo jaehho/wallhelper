@@ -29,14 +29,12 @@ from .grid import CollectionGrid
 from .plate import Plate
 from .settings import SettingsPanel
 from .sheets import guide_sheet, shortcuts_sheet
-from .style import palette, stylesheet
+from .style import LONG_TOAST_SECONDS, palette, stylesheet
 from .thumbs import dimensions
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
-
-LONG_TOAST_SECONDS = 7
 
 
 class Window(Adw.ApplicationWindow):

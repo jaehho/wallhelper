@@ -16,6 +16,7 @@ from unittest import mock
 from tests import guard
 from wallhelper import sources
 from wallhelper.library import credits
+from wallhelper.net import FetchError
 from wallhelper.paths import CREDITS, DIR
 
 
@@ -34,10 +35,9 @@ def png(width: int, height: int) -> bytes:
             + chunk(b"IEND", b""))
 
 
-def save(_url, out: Path) -> bool:
+def save(_url, out: Path) -> None:
     """What download would have done, without the network."""
     out.write_bytes(png(3840, 2160))
-    return True
 
 
 class Source(unittest.TestCase):
@@ -318,21 +318,52 @@ class Adopt(Source):
         self.assertEqual(credits()[out.name], ("A title", "Someone",
                                                "https://example.com/page"))
 
-    def test_min_width_rejects_a_small_photograph(self):
-        def tiny(_url, out: Path) -> bool:
+    def test_min_width_rejects_a_small_photograph_and_says_how_small(self):
+        def tiny(_url, out: Path) -> None:
             out.write_bytes(png(800, 600))
-            return True
-        with mock.patch.object(sources, "download", side_effect=tiny):
-            self.assertIsNone(sources.adopt(
+        with mock.patch.object(sources, "download", side_effect=tiny), \
+             self.assertRaisesRegex(FetchError, "too small: 800 px"):
+            sources.adopt(
                 "test", {"min_width": 1920},
                 {"image": "https://example.com/s.jpg", "ident": "s",
-                 "date": "20261005"}))
+                 "date": "20261005"})
+        # Nothing of it is left in the collection, or in the ledger.
+        self.assertEqual(list(DIR.glob("*.jpg")), [])
+        self.assertEqual(credits(), {})
 
     def test_a_collision_downloads_nothing_new(self):
         cand = {"image": "https://example.com/x.jpg", "ident": "x",
                 "date": "20261005"}
         first = self.adopt({}, cand)
-        with mock.patch.object(sources, "download") as taken:
-            self.assertIsNone(sources.adopt("test", {}, cand))
-            taken.assert_not_called()
+        with mock.patch.object(sources, "download") as taken, \
+             self.assertRaisesRegex(FetchError, "already in the collection"):
+            sources.adopt("test", {}, cand)
+        taken.assert_not_called()
         self.assertTrue(first.exists())
+
+    def test_a_download_that_fails_says_why(self):
+        with mock.patch.object(sources, "download",
+                               side_effect=FetchError("Unauthorized")), \
+             self.assertRaisesRegex(FetchError, "Unauthorized"):
+            sources.adopt("test", {}, {
+                "image": "https://example.com/x.jpg", "ident": "x"})
+
+    def test_a_walk_over_candidates_goes_on_past_a_failed_one(self):
+        # fetch_source tries the next candidate; the reason is for a click.
+        answers = iter([FetchError("Not Found"), None])
+
+        def flaky(_url, out: Path) -> None:
+            if (answer := next(answers)) is not None:
+                raise answer
+            save(_url, out)
+        spec = {"image": "{p}", "list": ".", "id": "{id}"}
+        with mock.patch.object(
+                sources, "fetch_url",
+                return_value=json.dumps([{"p": "https://e.com/a.jpg",
+                                          "id": "a"},
+                                         {"p": "https://e.com/b.jpg",
+                                          "id": "b"}]).encode()), \
+             mock.patch.object(sources, "download", side_effect=flaky):
+            out = sources.fetch_source(
+                "test", {**spec, "url": "https://e.com"})
+        self.assertIsNotNone(out)

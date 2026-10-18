@@ -12,12 +12,14 @@ import threading
 import gi
 
 from ..config import config, gallery_sources
+from ..net import FetchError, describe
 from ..sources import adopt, list_source
-from .style import GRID_H, GRID_W, THUMB_H, THUMB_W
+from .style import GRID_H, GRID_W, LONG_TOAST_SECONDS, THUMB_H, THUMB_W
 from .thumbs import remote_thumbnail
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+gi.require_version("Adw", "1")
+from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 ROW_LIMIT = 8
 
@@ -131,19 +133,26 @@ class ElsewhereBar(Gtk.Box):
             GLib.idle_add(pic.set_pixbuf, buf)
 
     def _pick(self, _button, cand: dict):
-        cfg = config()
-        spec = cfg.get(cand.get("name") or "") or {}
+        name = cand.get("name") or ""
+        spec = config().get(name) or {}
         self.on_toast("Saving…")
 
         def work():
-            path = adopt(cand.get("name") or "", spec, cand)
-            GLib.idle_add(self._done, path, cand)
+            path, why = None, ""
+            try:
+                path = adopt(name, spec, cand)
+            except FetchError as err:
+                why = str(err)
+            except Exception as err:   # a thread that dies says nothing
+                why = describe(err)
+            GLib.idle_add(self._done, name, path, why, cand)
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _done(self, path, cand):
+    def _done(self, name, path, why, cand):
         if path is None:
-            self.on_toast("Couldn't save that one")
+            self.on_toast(f"{name} — {why}", timeout=LONG_TOAST_SECONDS,
+                          priority=Adw.ToastPriority.HIGH)
         else:
             self.on_adopt(path, cand)
         return False

@@ -16,6 +16,7 @@ DATA = '"JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace'
 
 THUMB_W, THUMB_H = 112, 63       # 16:9, elsewhere row
 GRID_W, GRID_H = 220, 124        # 16:9, collection tiles
+LONG_TOAST_SECONDS = 7           # a toast with something to read in it
 
 
 def palette() -> dict[str, str]:

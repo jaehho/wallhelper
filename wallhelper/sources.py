@@ -19,7 +19,7 @@ import urllib.parse
 from pathlib import Path
 
 from .library import measure, remember, slugify
-from .net import download, fetch_url
+from .net import FetchError, describe, download, fetch_url
 from .paths import DIR
 
 _REPLACE_PAIR_LEN = 2
@@ -101,11 +101,14 @@ def _resolve(spec: dict, timeout: int = 30) -> tuple[list | None, str]:
     url = fill(spec.get("url"), {})
     if url:
         try:
-            document = json.loads(fetch_url(url, timeout=timeout,
-                                            headers=spec.get("headers")))
-        except (urllib.error.URLError, OSError, TimeoutError) as problem:
-            return None, str(getattr(problem, "reason", problem))[:70]
-        except (json.JSONDecodeError, ValueError):
+            reply = fetch_url(url, timeout=timeout,
+                              headers=spec.get("headers"))
+        except (urllib.error.URLError, OSError, TimeoutError,
+                ValueError) as problem:
+            return None, describe(problem)
+        try:
+            document = json.loads(reply)
+        except ValueError:
             return None, "the reply is not JSON"
 
     if spec.get("list"):
@@ -164,33 +167,47 @@ def list_source(_name: str, spec: dict) -> list[dict]:
     return out
 
 
-def adopt(name: str, spec: dict, cand: dict) -> Path | None:
+def refusal(spec: dict, size: tuple[int, int] | None) -> str:
+    """Why a photograph of this size is not worth keeping from this source,
+    in a few words, or "" when it is. One too small to cover the screen is
+    worse than none."""
+    try:
+        floor = int(spec.get("min_width") or 0)
+    except (TypeError, ValueError):
+        floor = 0
+    if not floor:
+        return ""
+    if size is None:
+        return "can't tell its size"
+    return f"too small: {size[0]} px" if size[0] < floor else ""
+
+
+def adopt(name: str, spec: dict, cand: dict) -> Path:
     """Download one candidate into the collection and remember who made it.
 
     Same filename rules as the daily fetch: {day}-{name}-{ident}{suffix},
-    with the day read back out of the candidate's own date.
+    with the day read back out of the candidate's own date. FetchError,
+    saying why, when it was not kept.
     """
     src = cand.get("image") or ""
     if not src:
-        return None
+        msg = "no image to fetch"
+        raise FetchError(msg)
     ident = cand.get("ident") or time.strftime("%H%M%S")
     day = re.sub(r"\D", "", str(cand.get("date") or ""))
     if len(day) != _YYYYMMDD_LEN:
         day = time.strftime("%Y%m%d")
     suffix = Path(urllib.parse.urlparse(src).path).suffix or ".jpg"
     out = DIR / f"{day}-{name}-{ident}{suffix}"
-    if out.exists() or not download(src, out):
-        return None
+    if out.exists():
+        msg = "already in the collection"
+        raise FetchError(msg)
+    download(src, out)
 
-    # A photograph too small to cover the screen is worse than none.
-    try:
-        floor = int(spec.get("min_width") or 0)
-    except (TypeError, ValueError):
-        floor = 0
-    size = measure(out)
-    if floor and (size is None or size[0] < floor):
+    complaint = refusal(spec, measure(out))
+    if complaint:
         out.unlink(missing_ok=True)
-        return None
+        raise FetchError(complaint)
 
     remember(out.name, cand.get("title") or "", cand.get("credit") or "",
              cand.get("link") or "")
@@ -212,9 +229,8 @@ def fetch_source(name: str, spec: dict) -> Path | None:
     start = random.randrange(len(cands))
     for step in range(len(cands)):
         cand = cands[(start + step) % len(cands)]
-        got = adopt(name, spec, cand)
-        if got is not None:
-            return got
+        with contextlib.suppress(FetchError):
+            return adopt(name, spec, cand)
     return None
 
 
