@@ -58,6 +58,7 @@ class SettingsPanel(Gtk.Revealer):
         shut.set_cursor(self.pointer)
         shut.connect("clicked", lambda _b: self.on_close())
         head.append(shut)
+        self.shut = shut
         column.append(head)
 
         self.section(column, "MORNING")

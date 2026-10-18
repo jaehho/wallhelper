@@ -130,7 +130,9 @@ class Window(Adw.ApplicationWindow):
         self.show_panel(self.guide_panel, False)
         self.show_panel(self.shortcuts_panel, False)
         self.show_panel(self.settings_panel, True)
-        self.set_focus(self.settings_panel.first_row or self.settings_panel)
+        # Not a source row: Enter or Space straight after `,` would switch
+        # that source off.
+        self.set_focus(self.settings_panel.shut)
         return False
 
     def open_shortcuts(self, _button=None):
@@ -238,6 +240,12 @@ class Window(Adw.ApplicationWindow):
                 or self.guide_panel.get_reveal_child()):
             self.close_overlays()      # any key dismisses either sheet
             return True
+
+        if self.settings_panel.get_reveal_child():
+            # A source row is a button, so D or F would act on the window
+            # behind the panel. Settings answers Esc, and the keys of the
+            # widget that has focus, and nothing else.
+            return False
 
         if typing:
             return False
