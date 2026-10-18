@@ -8,12 +8,10 @@ plate and strip.
 
 from __future__ import annotations
 
-import argparse
 import threading
 
 import gi
 
-from ..cli import cmd_fetch
 from ..desktop import push_wallpaper
 from ..library import (
     TRASHED,
@@ -23,6 +21,8 @@ from ..library import (
     restore,
     set_wallpaper,
 )
+from ..morning import FAILED, SAVED, TODAY, Outcome, fetch_morning
+from ..net import describe
 from ..paths import GUIDE_SEEN
 from .elsewhere import ElsewhereBar
 from .grid import CollectionGrid
@@ -47,6 +47,7 @@ class Window(Adw.ApplicationWindow):
         self.wanted = None
         self.url = ""
         self.undoable = None         # (toast, Deleted) while UNDO is on offer
+        self.fetching = False        # F is working; another F waits
         self.held = set()            # keycodes pressed and not yet released
 
         css = Gtk.CssProvider()
@@ -278,14 +279,34 @@ class Window(Adw.ApplicationWindow):
         self.toast(f"{gone.title} — restored")
 
     def on_fetch(self, _button=None):
-        def work():
-            rc = cmd_fetch(argparse.Namespace(wait=False))
-            GLib.idle_add(done, rc)
+        # What you press again when nothing seems to happen.
+        if self.fetching:
+            return
+        self.fetching = True
+        busy = Adw.Toast(title="Fetching\u2026", timeout=0)
+        self.toasts.add_toast(busy)
 
-        def done(rc):
-            if rc != 0:
-                self.toast("Couldn't reach the morning source")
+        def work():
+            try:
+                run = fetch_morning()
+            except Exception as err:   # a thread that dies says nothing
+                run = Outcome(FAILED, "", describe(err))
+            GLib.idle_add(done, run)
+
+        def done(run):
+            self.fetching = False
+            busy.dismiss()
+            if run.kind == SAVED:
+                self.toast(f"{run.source} \u2014 saved and set")
+            elif run.kind == TODAY:
+                self.toast("Already have today's photo")
+            elif run.ok:
+                self.toast(run.message)
+            else:
+                self.toast(run.message, timeout=LONG_TOAST_SECONDS,
+                           priority=Adw.ToastPriority.HIGH)
             self.refresh()
+            return False
 
         threading.Thread(target=work, daemon=True).start()
 
