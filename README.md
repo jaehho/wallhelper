@@ -112,6 +112,12 @@ the shipped sources stay shipped, so they keep improving.
   to hyprpaper alone does not.
 - `.credits` is tab-separated filename/title/byline/url. A dotfile, so an image
   browser pointed at the folder skips it.
+- `~/.local/state/wallhelper/last-fetch.json` is what the last morning fetch
+  came to: when, which source, and its reason if it failed. It is rewritten
+  each run and is not a log; the journal is the log. A second run the same day
+  asks nobody when that note says today's photograph is still in the
+  collection, and a photograph the source serves a second time (Bing before it
+  rolls over) counts as fetched.
 - Everything fetched is kept. Deleting is the only removal, and it goes through
   the desktop wastebasket. A deleted photograph keeps its `.credits` line and
   thumbnails while the Trash holds it, so restoring it brings its caption
@@ -134,7 +140,8 @@ else and a guard stops them before they touch a real collection.
 
 Modules: `paths` (every path, importing nothing), `config` (the shipped sources
 and your deltas), `net`, `desktop` (notifications, hyprctl, hyprpaper),
-`library` (the collection on disk), `sources` (the template engine), `cli`, and
+`library` (the collection on disk), `sources` (the template engine),
+`morning` (the daily fetch and the note it leaves), `cli`, and
 `gui/` (`style`, `thumbs`, `grid`, `elsewhere`, `plate`, `sheets`, `settings`,
 `window`, `app`). Importing `wallhelper.gui` is what pulls in GTK, which is why
 the CLI does it inside the `gui` subcommand and nowhere else.

@@ -56,7 +56,7 @@ class Source(unittest.TestCase):
         with mock.patch.object(sources, "fetch_url",
                                return_value=document), \
              mock.patch.object(sources, "download", side_effect=save):
-            return sources.fetch_source("test", spec)
+            return sources.fetch_source("test", spec).path
 
     def probe(self, spec, reply=None, error=None):
         document = reply if isinstance(reply, bytes) \
@@ -135,7 +135,7 @@ class Fetch(Source):
                 side_effect=urllib.error.URLError("no route")), \
              mock.patch.object(sources, "download", side_effect=save):
             self.assertIsNone(sources.fetch_source("test", {
-                "url": "https://example.com/api", "image": "{path}"}))
+                "url": "https://example.com/api", "image": "{path}"}).path)
 
     def test_a_spec_without_an_image_template_gives_nothing(self):
         self.assertIsNone(self.fetch({"url": "https://example.com"}, {}))
@@ -146,7 +146,7 @@ class Fetch(Source):
              mock.patch.object(sources, "download") as taken:
             self.assertIsNone(sources.fetch_source("test", {
                 "url": "https://example.com/api", "list": "data",
-                "image": "{path}"}))
+                "image": "{path}"}).path)
             taken.assert_not_called()
 
 
@@ -426,7 +426,7 @@ class Adopt(Source):
              mock.patch.object(sources, "download", side_effect=flaky):
             out = sources.fetch_source(
                 "test", {**spec, "url": "https://e.com"})
-        self.assertIsNotNone(out)
+        self.assertIsNotNone(out.path)
 
 
 class Refusal(unittest.TestCase):

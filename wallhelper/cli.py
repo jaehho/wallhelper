@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from .config import autofetch_sources, config, migrate
+from .config import migrate
 from .desktop import notify
 from .library import (
     TRASHED,
@@ -20,64 +20,44 @@ from .library import (
     migrate_collection,
     set_wallpaper,
 )
+from .morning import FAILED, UNSET, fetch_morning
 from .paths import DIR
-from .sources import fetch_source
 
 # --- commands -------------------------------------------------------------
 
 
 def cmd_fetch(args) -> int:
-    DIR.mkdir(parents=True, exist_ok=True)
-
-    # One photo a day from the morning sources. Without this, a second run
-    # finds Bing already has today's and downloads a second copy.
-    today = time.strftime("%Y%m%d")
-    if list(DIR.glob(f"{today}-*")):
-        print("wallhelper: already have today's photo")
-        return 0
-
-    usable = autofetch_sources()
-    if not usable:
-        notify("Wallhelper", "no morning source is switched on", urgent=True)
-        print("wallhelper: no morning source is switched on", file=sys.stderr)
-        return 1
+    run = fetch_morning()
 
     # A user timer cannot reliably order itself after the network is up:
     # network-online.target belongs to the system manager and nothing in the
     # user manager pulls it in. The unit fired at login on 2026-09-03 and
     # -09-04, both sources failed on DNS, and those days simply had no photo.
     # Retrying beats pretending the ordering works. Only the timer waits.
-    new = None
-    for delay in (0, *((30, 60, 120, 240) if args.wait else ())):
-        if delay:
-            print(f"wallhelper: no source answered; retrying in {delay}s",
-                  file=sys.stderr)
-            time.sleep(delay)
-        for name in usable:
-            new = fetch_source(name, config()[name])
-            if new:
-                print(f"wallhelper: {name} -> {new.name}")
-                break
-        if new:
+    for delay in (30, 60, 120, 240) if args.wait else ():
+        if run.kind != FAILED:
             break
-
-    if new is None:
-        # Exit non-zero so systemd marks the unit failed and it shows up in
-        # `make status`; silence here is how the tool this replaced stayed
-        # broken from April to September. A toast on every flaky-wifi failure
-        # would train you to ignore it, so only an empty pool escalates.
-        if not images(DIR):
-            notify("Wallhelper", "every source failed and none are on disk",
-                   urgent=True)
-            print("wallhelper: every source failed and none are on disk",
-                  file=sys.stderr)
-            return 1
-        print("wallhelper: every source failed; keeping what's on disk",
+        print(f"wallhelper: no source answered; retrying in {delay}s",
               file=sys.stderr)
-        return 1
+        time.sleep(delay)
+        run = fetch_morning()
 
-    set_wallpaper(new)
-    return 0
+    if run.ok:
+        print(f"wallhelper: {run.message}")
+        return 0
+
+    # Exit non-zero so systemd marks the unit failed and it shows up in
+    # `make status`; silence here is how the tool this replaced stayed
+    # broken from April to September. A toast on every flaky-wifi failure
+    # would train you to ignore it, so only an empty pool escalates, and a
+    # morning with no source to ask.
+    print(f"wallhelper: {run.message}", file=sys.stderr)
+    if run.kind == UNSET:
+        notify("Wallhelper", run.message, urgent=True)
+    elif not images(DIR):
+        notify("Wallhelper", f"{run.message} \u2014 and none are on disk",
+               urgent=True)
+    return 1
 
 
 def cmd_set(args) -> int:

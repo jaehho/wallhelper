@@ -277,11 +277,16 @@ def target(name: str, cand: dict) -> Path:
     return DIR / f"{day}-{name}-{ident}{suffix}"
 
 
+class AlreadyHeldError(FetchError):
+    """The candidate is a photograph the collection already holds."""
+
+
 def adopt(name: str, spec: dict, cand: dict) -> Path:
     """Download one candidate into the collection and remember who made it.
 
     Same filename rules as the daily fetch (see target). FetchError, saying
-    why, when it was not kept.
+    why, when it was not kept; AlreadyHeldError when the answer is that it
+    already was.
     """
     src = cand.get("image") or ""
     if not src:
@@ -290,7 +295,7 @@ def adopt(name: str, spec: dict, cand: dict) -> Path:
     out = target(name, cand)
     if out.exists():
         msg = "already in the collection"
-        raise FetchError(msg)
+        raise AlreadyHeldError(msg)
     download(src, out)
 
     complaint = refusal(spec, measure(out))
@@ -303,24 +308,44 @@ def adopt(name: str, spec: dict, cand: dict) -> Path:
     return out
 
 
-def fetch_source(name: str, spec: dict) -> Path | None:
+class Fetched(NamedTuple):
+    """What asking one source for a photograph came to."""
+
+    path: Path | None    # the photograph, new or already held
+    new: bool            # saved just now, not found in the collection
+    why: str             # with no path: the reason, in a line
+
+
+def fetch_source(name: str, spec: dict) -> Fetched:
     """Run one source described entirely by config: list, pick one, keep it.
 
     That covers every shipped one and, more to the point, the next one --
     adding a source is writing an object, not editing this file.
+
+    A source whose photograph the collection already holds has answered:
+    it is a path that is not new. A source that could give nothing says
+    why, in the words of the first thing that went wrong.
     """
-    cands = list_source(name, spec).candidates
+    listing = list_source(name, spec)
+    cands = listing.candidates
     if not cands:
-        return None
+        return Fetched(None, False, listing.complaint)
 
     # Start somewhere random and walk, so a folder full of past picks doesn't
     # make a list source give up on its first collision.
     start = random.randrange(len(cands))
+    held, why = None, ""
     for step in range(len(cands)):
         cand = cands[(start + step) % len(cands)]
-        with contextlib.suppress(FetchError):
-            return adopt(name, spec, cand)
-    return None
+        try:
+            return Fetched(adopt(name, spec, cand), True, "")
+        except AlreadyHeldError:
+            held = held or target(name, cand)
+        except FetchError as err:
+            why = why or str(err)
+    if held and not why:
+        return Fetched(held, False, "")
+    return Fetched(None, False, why)
 
 
 def probe_source(_name: str, spec: dict) -> tuple[bool, str]:
