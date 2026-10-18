@@ -9,14 +9,19 @@ plate and strip.
 from __future__ import annotations
 
 import argparse
-import shutil
 import threading
 
 import gi
 
-from ..cli import cmd_delete, cmd_fetch
+from ..cli import cmd_fetch
 from ..desktop import push_wallpaper
-from ..library import current_image, label, set_wallpaper
+from ..library import (
+    TRASHED,
+    current_image,
+    delete_photo,
+    prune,
+    set_wallpaper,
+)
 from ..paths import GUIDE_SEEN
 from .elsewhere import ElsewhereBar
 from .grid import CollectionGrid
@@ -108,6 +113,8 @@ class Window(Adw.ApplicationWindow):
 
         self.refresh()
         self.elsewhere.reload()
+        # Off the main thread: it asks gio what the Trash holds.
+        threading.Thread(target=prune, daemon=True).start()
         if not GUIDE_SEEN.exists():
             GLib.timeout_add(620, self.open_guide)
 
@@ -199,15 +206,21 @@ class Window(Adw.ApplicationWindow):
     def on_delete(self, _button=None):
         if self.current is None:
             return
-        name = label(self.current).get("title") or self.current.stem
-        failed = cmd_delete(argparse.Namespace()) != 0
-        self.refresh()
-        if failed:
+        # The photograph the plate is showing, not whatever hyprpaper
+        # reports: a pick is pushed on a thread, so the two can disagree.
+        try:
+            gone = delete_photo(self.current)
+        except ValueError:
+            self.toast("That one is not in the collection")
+        except OSError:
             self.toast("Couldn't delete that one")
-        elif shutil.which("gio"):
-            self.toast(f"{name} — moved to Trash")
         else:
-            self.toast(f"Deleted {name}")
+            if gone.how == TRASHED:
+                self.toast(f"{gone.title} — moved to Trash")
+            else:
+                self.toast(f"{gone.title} — deleted for good, "
+                           "the Trash refused it")
+        self.refresh()
 
     def on_fetch(self, _button=None):
         def work():

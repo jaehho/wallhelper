@@ -10,16 +10,15 @@ from pathlib import Path
 from .config import autofetch_sources, config, migrate
 from .desktop import notify
 from .library import (
-    collection,
+    TRASHED,
     current_image,
-    forget,
+    delete_photo,
     images,
     in_collection,
     is_image,
     label,
     migrate_collection,
     set_wallpaper,
-    trash,
 )
 from .paths import DIR
 from .sources import fetch_source
@@ -101,38 +100,30 @@ def cmd_set(args) -> int:
 
 
 def cmd_delete(_args) -> int:
-    """Remove the photo on screen for good, and move on to its neighbour."""
+    """Send the photo on screen to the Trash, and move on to its neighbour."""
     path = current_image()
     if path is None:
         print("wallhelper: no active wallpaper", file=sys.stderr)
         return 1
 
-    info = label(path)
-    shown = info["title"] or path.stem
-
-    # Where it sat in the collection, so what replaces it is its neighbour
-    # rather than whatever happens to be oldest. Deleting a run of photos
-    # should walk along the grid, not throw you back to the start every time.
-    was = [other.name for other in collection()]
-    index = was.index(path.name) if path.name in was else 0
-    following = [other for other in collection() if other.name != path.name]
-
     try:
-        trashed = trash(path)
+        gone = delete_photo(path)
     except ValueError as err:
         notify("Not deleted", str(err))
         print(f"wallhelper: {err}", file=sys.stderr)
         return 1
-    if not trashed:
+    except OSError:
         notify("Couldn't delete", path.name)
         print(f"wallhelper: couldn't delete {path.name}", file=sys.stderr)
         return 1
 
-    forget([path.name])
-    if following:
-        set_wallpaper(following[min(index, len(following) - 1)])
-    notify("Deleted", shown)
-    print(f"Deleted: {shown}")
+    if gone.how == TRASHED:
+        notify("Moved to Trash", gone.title)
+        print(f"Moved to Trash: {gone.title}")
+    else:
+        # The Trash would not take it, so there is nothing to restore from.
+        notify("Deleted for good", f"{gone.title} \u2014 the Trash refused it")
+        print(f"Deleted for good, the Trash refused it: {gone.title}")
     return 0
 
 
@@ -169,7 +160,7 @@ def main() -> int:
     p.add_argument("image")
     p.set_defaults(func=cmd_set)
 
-    p = sub.add_parser("delete", help="remove what's on screen for good")
+    p = sub.add_parser("delete", help="send what's on screen to the Trash")
     p.set_defaults(func=cmd_delete)
 
     p = sub.add_parser("info", help="what's on screen, and where it came from")

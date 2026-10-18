@@ -24,7 +24,7 @@ AUR workflow.
 ```
 wallhelper fetch [--wait]   pull the day's photo (what the systemd timer runs)
 wallhelper set <image>      make a photo in the collection the wallpaper
-wallhelper delete           remove what's on screen for good
+wallhelper delete           send what's on screen to the Trash
 wallhelper info             what's on screen and where it came from
 wallhelper gui              the same thing with pictures
 ```
@@ -102,7 +102,10 @@ the shipped sources stay shipped, so they keep improving.
 - `.credits` is tab-separated filename/title/byline/url. A dotfile, so an image
   browser pointed at the folder skips it.
 - Everything fetched is kept. Deleting is the only removal, and it goes through
-  the desktop wastebasket.
+  the desktop wastebasket. A deleted photograph keeps its `.credits` line and
+  thumbnails while the Trash holds it, so restoring it brings its caption
+  back; both are pruned once it is in neither place. If the Trash refuses the
+  file, `delete` says it was deleted for good.
 
 ## Develop
 
