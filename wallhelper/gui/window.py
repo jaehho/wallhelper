@@ -49,6 +49,7 @@ class Window(Adw.ApplicationWindow):
         self.wanted = None
         self.url = ""
         self.undoable = None         # (toast, Deleted) while UNDO is on offer
+        self.held = set()            # keycodes pressed and not yet released
 
         css = Gtk.CssProvider()
         css.load_from_data(stylesheet(palette()).encode())
@@ -113,7 +114,11 @@ class Window(Adw.ApplicationWindow):
 
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self.on_key)
+        keys.connect("key-released", self.on_key_released)
         self.add_controller(keys)
+        # A release that lands elsewhere (focus moved) would leave its key
+        # looking held.
+        self.connect("notify::is-active", lambda *_a: self.held.clear())
 
         self.refresh()
         self.elsewhere.reload()
@@ -279,7 +284,15 @@ class Window(Adw.ApplicationWindow):
 
         threading.Thread(target=work, daemon=True).start()
 
-    def on_key(self, _controller, keyval, _code, _state):
+    def on_key_released(self, _controller, _keyval, code, _state):
+        self.held.discard(code)
+
+    def on_key(self, _controller, keyval, code, _state):
+        # GTK4 sends an auto-repeat as more presses with no release between
+        # them, and says nothing else to tell it from a fresh one.
+        repeat = code in self.held
+        self.held.add(code)
+
         # BUBBLE phase, so a focused entry has already had its go at the
         # key -- but settings has text fields, and a stray 'd' there must
         # type a d, not delete a photo.
@@ -319,6 +332,9 @@ class Window(Adw.ApplicationWindow):
             Gdk.KEY_f: self.on_fetch, Gdk.KEY_F: self.on_fetch,
         }
         if keyval in actions:
-            actions[keyval](None)
+            # Held down, D would thin the collection one photograph per
+            # repeat, each deleted as the neighbour of the last.
+            if not (repeat and keyval in (Gdk.KEY_d, Gdk.KEY_D)):
+                actions[keyval](None)
             return True
         return False

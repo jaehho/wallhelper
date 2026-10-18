@@ -25,11 +25,16 @@ def stand_in(settings=False, shortcuts=False, guide=False):
     win.settings_panel.get_reveal_child.return_value = settings
     win.shortcuts_panel.get_reveal_child.return_value = shortcuts
     win.guide_panel.get_reveal_child.return_value = guide
+    win.held = set()
     return win
 
 
-def press(win, keyval):
-    return window.Window.on_key(win, None, keyval, 0, 0)
+def press(win, keyval, code=0):
+    return window.Window.on_key(win, None, keyval, code, 0)
+
+
+def release(win, keyval, code=0):
+    window.Window.on_key_released(win, None, keyval, code, 0)
 
 
 class SettingsOpen(unittest.TestCase):
@@ -62,3 +67,43 @@ class SettingsOpen(unittest.TestCase):
         win.on_delete.assert_called_once()
         self.assertTrue(press(win, Gdk.KEY_f))
         win.on_fetch.assert_called_once()
+
+
+class KeyRepeat(unittest.TestCase):
+    """Holding D must delete one photograph, not walk the collection."""
+
+    D = 40                       # a keycode; any would do
+
+    def test_a_held_d_deletes_once(self):
+        win = stand_in()
+        for _ in range(5):
+            self.assertTrue(press(win, Gdk.KEY_d, self.D))
+        win.on_delete.assert_called_once()
+
+    def test_a_second_press_after_the_release_deletes_again(self):
+        win = stand_in()
+        press(win, Gdk.KEY_d, self.D)
+        release(win, Gdk.KEY_d, self.D)
+        press(win, Gdk.KEY_d, self.D)
+        self.assertEqual(win.on_delete.call_count, 2)
+
+    def test_the_release_may_come_with_the_other_case(self):
+        # Shift let go first: D went down, d comes up. Same keycode.
+        win = stand_in()
+        press(win, Gdk.KEY_D, self.D)
+        release(win, Gdk.KEY_d, self.D)
+        press(win, Gdk.KEY_D, self.D)
+        self.assertEqual(win.on_delete.call_count, 2)
+
+    def test_another_key_in_between_does_not_reset_it(self):
+        win = stand_in()
+        press(win, Gdk.KEY_d, self.D)
+        press(win, Gdk.KEY_e, 26)
+        press(win, Gdk.KEY_d, self.D)
+        win.on_delete.assert_called_once()
+
+    def test_other_keys_still_repeat(self):
+        win = stand_in()
+        press(win, Gdk.KEY_f, 41)
+        press(win, Gdk.KEY_f, 41)
+        self.assertEqual(win.on_fetch.call_count, 2)
