@@ -52,10 +52,23 @@ def collection() -> list[Path]:
     return images(DIR)
 
 
+def in_collection(path: Path, folder: Path = DIR) -> bool:
+    """Whether the file sits directly in the collection folder.
+
+    Symlinks are followed first, because that is where a delete would
+    land: a link in the folder to a file elsewhere is not in it."""
+    return path.resolve().parent == folder.resolve()
+
+
 def trash(path: Path) -> bool:
     """Send to the desktop wastebasket, not unlink.
 
-    A person deleting a photograph can change their mind."""
+    A person deleting a photograph can change their mind. Only the
+    collection's own photographs: `delete` acts on whatever is on screen,
+    and that can be a file wallhelper never owned."""
+    if not in_collection(path):
+        msg = f"{path} is outside the collection ({DIR}), so not deleting it"
+        raise ValueError(msg)
     try:
         done = subprocess.run(["gio", "trash", str(path)],
                               capture_output=True, timeout=15, check=False)
@@ -78,6 +91,7 @@ _JPEG_SOF_LO = 0xC0
 _JPEG_SOF_HI = 0xCF
 _JPEG_SOF_SKIP = (0xC4, 0xC8, 0xCC)
 _YYYYMMDD_LEN = 8
+_WEBP_HEAD_LEN = 12            # "RIFF", a size, "WEBP"
 
 
 # --- credits --------------------------------------------------------------
@@ -215,6 +229,26 @@ def measure(path: Path) -> tuple[int, int] | None:
                 handle.seek(length - 2, 1)
     except (OSError, struct.error, ValueError, IndexError):
         return None
+
+
+def is_image(path: Path) -> bool:
+    """Whether the file is a photograph, by its name and its first bytes.
+
+    measure() answers for PNG and JPEG. WebP and BMP, which the sources can
+    also hand us, are told apart by their signatures; a file called .jpg
+    that holds text is neither.
+    """
+    if path.suffix.lower() not in IMAGE_SUFFIXES:
+        return False
+    if measure(path) is not None:
+        return True
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(_WEBP_HEAD_LEN)
+    except OSError:
+        return False
+    return head[:2] == b"BM" or (head[:4] == b"RIFF"
+                                 and head[8:12] == b"WEBP")
 
 
 def set_wallpaper(image: Path, push: bool = True) -> None:

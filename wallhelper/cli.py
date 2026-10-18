@@ -14,6 +14,8 @@ from .library import (
     current_image,
     forget,
     images,
+    in_collection,
+    is_image,
     label,
     migrate_collection,
     set_wallpaper,
@@ -84,6 +86,16 @@ def cmd_set(args) -> int:
     if not path.is_file():
         print(f"wallhelper: no such image: {args.image}", file=sys.stderr)
         return 1
+    # .current is what hyprpaper reads at boot, and `delete` acts on
+    # whatever it ends up pointing at: both want a photograph in the
+    # collection, not a text file or a copy in ~/Downloads.
+    if not is_image(path):
+        print(f"wallhelper: not an image: {args.image}", file=sys.stderr)
+        return 1
+    if not in_collection(path):
+        print(f"wallhelper: {args.image} is outside the collection "
+              f"({DIR}); copy it in first", file=sys.stderr)
+        return 1
     set_wallpaper(path)
     return 0
 
@@ -105,7 +117,13 @@ def cmd_delete(_args) -> int:
     index = was.index(path.name) if path.name in was else 0
     following = [other for other in collection() if other.name != path.name]
 
-    if not trash(path):
+    try:
+        trashed = trash(path)
+    except ValueError as err:
+        notify("Not deleted", str(err))
+        print(f"wallhelper: {err}", file=sys.stderr)
+        return 1
+    if not trashed:
         notify("Couldn't delete", path.name)
         print(f"wallhelper: couldn't delete {path.name}", file=sys.stderr)
         return 1
@@ -146,7 +164,8 @@ def main() -> int:
                    help="retry for a few minutes if no source answers")
     p.set_defaults(func=cmd_fetch)
 
-    p = sub.add_parser("set", help="make an image the wallpaper")
+    p = sub.add_parser("set", help="make a photo in the collection the "
+                                   "wallpaper")
     p.add_argument("image")
     p.set_defaults(func=cmd_set)
 

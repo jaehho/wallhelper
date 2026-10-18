@@ -23,7 +23,7 @@ AUR workflow.
 
 ```
 wallhelper fetch [--wait]   pull the day's photo (what the systemd timer runs)
-wallhelper set <image>      make an image the wallpaper
+wallhelper set <image>      make a photo in the collection the wallpaper
 wallhelper delete           remove what's on screen for good
 wallhelper info             what's on screen and where it came from
 wallhelper gui              the same thing with pictures

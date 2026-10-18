@@ -1,8 +1,11 @@
 """Reading a photo off disk, and what the folder used to hold."""
 
 import struct
+import tempfile
 import unittest
 import zlib
+from pathlib import Path
+from unittest import mock
 
 from tests import guard
 from wallhelper import library
@@ -60,6 +63,77 @@ class Measure(unittest.TestCase):
         path = DIR / "notes.png"
         path.write_bytes(b"nope")
         self.assertIsNone(library.measure(path))
+
+
+class IsImage(unittest.TestCase):
+    def setUp(self):
+        DIR.mkdir(parents=True, exist_ok=True)
+
+    def test_a_png_is(self):
+        path = DIR / "shot.png"
+        path.write_bytes(png(8, 8))
+        self.assertTrue(library.is_image(path))
+
+    def test_text_named_like_an_image_is_not(self):
+        for name in ("notes.png", "notes.jpg", "notes.webp", "notes.bmp"):
+            with self.subTest(name=name):
+                path = DIR / name
+                path.write_text("just words")
+                self.assertFalse(library.is_image(path))
+
+    def test_an_image_under_another_suffix_is_not(self):
+        path = DIR / "shot.txt"
+        path.write_bytes(png(8, 8))
+        self.assertFalse(library.is_image(path))
+
+    def test_webp_and_bmp_are_known_by_their_signature(self):
+        webp = DIR / "shot.webp"
+        webp.write_bytes(b"RIFF\x00\x00\x00\x00WEBPVP8 ")
+        bmp = DIR / "shot.bmp"
+        bmp.write_bytes(b"BM" + bytes(24))
+        self.assertTrue(library.is_image(webp))
+        self.assertTrue(library.is_image(bmp))
+
+
+class InCollection(unittest.TestCase):
+    def setUp(self):
+        DIR.mkdir(parents=True, exist_ok=True)
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        self.outside = Path(outside.name)
+
+    def test_a_file_in_the_folder_is(self):
+        path = DIR / "here.png"
+        path.write_bytes(png(4, 4))
+        self.assertTrue(library.in_collection(path))
+
+    def test_a_file_elsewhere_is_not(self):
+        path = self.outside / "there.png"
+        path.write_bytes(png(4, 4))
+        self.assertFalse(library.in_collection(path))
+
+    def test_a_subfolder_is_not_the_collection(self):
+        (DIR / "sub").mkdir(exist_ok=True)
+        path = DIR / "sub" / "deep.png"
+        path.write_bytes(png(4, 4))
+        self.assertFalse(library.in_collection(path))
+
+    def test_a_link_in_the_folder_to_a_file_elsewhere_is_not(self):
+        target = self.outside / "there.png"
+        target.write_bytes(png(4, 4))
+        link = DIR / "linked.png"
+        link.unlink(missing_ok=True)
+        link.symlink_to(target)
+        self.assertFalse(library.in_collection(link))
+
+    def test_trash_refuses_a_file_outside_before_asking_the_desktop(self):
+        path = self.outside / "there.png"
+        path.write_bytes(png(4, 4))
+        with mock.patch.object(library.subprocess, "run") as wastebasket, \
+                self.assertRaises(ValueError):
+            library.trash(path)
+        wastebasket.assert_not_called()
+        self.assertTrue(path.is_file())
 
 
 class MigrateCollection(unittest.TestCase):
