@@ -4,6 +4,7 @@ half-written file where a photograph should be."""
 
 from __future__ import annotations
 
+import http.client
 import os
 import re
 import urllib.error
@@ -21,8 +22,10 @@ UA = "wallhelper/1.0"
 _URL_SAFE = "%:/?#[]@!$&'()*+,;=~"
 _BLURB_LIMIT = 70
 # What a request can fail with. URLError and TimeoutError are OSErrors
-# already; ValueError is a URL that cannot be sent.
-_FAILURES = (urllib.error.URLError, OSError, TimeoutError, ValueError)
+# already; ValueError is a URL that cannot be sent, and HTTPException is a
+# reply that stopped partway (IncompleteRead) or made no sense.
+FAILURES = (urllib.error.URLError, OSError, TimeoutError, ValueError,
+             http.client.HTTPException)
 
 
 class FetchError(Exception):
@@ -33,6 +36,8 @@ class FetchError(Exception):
 def describe(problem: Exception) -> str:
     """One line for a failed request, in the other end's words where it had
     any: 'Unauthorized', 'timed out', 'Name or service not known'."""
+    if isinstance(problem, http.client.IncompleteRead):
+        return "the transfer was cut short"
     text = str(getattr(problem, "reason", problem))
     text = re.sub(r"^\[Errno -?\d+\]\s*", "", text)
     return (text or type(problem).__name__)[:_BLURB_LIMIT]
@@ -73,7 +78,7 @@ def fetch_head(url: str, limit: int, timeout: int) -> bytes:
     try:
         return fetch_url(url, timeout=timeout, limit=limit,
                          headers={"Range": f"bytes=0-{limit - 1}"})
-    except _FAILURES as err:
+    except FAILURES as err:
         raise FetchError(describe(err)) from err
 
 
@@ -93,7 +98,7 @@ def download(url: str, dest: Path) -> None:
         tmp.write_bytes(data)
         tmp.chmod(0o644)           # mktemp-style 0600 would be odd here
         tmp.replace(dest)
-    except _FAILURES as err:
+    except FAILURES as err:
         raise FetchError(describe(err)) from err
     finally:
         tmp.unlink(missing_ok=True)

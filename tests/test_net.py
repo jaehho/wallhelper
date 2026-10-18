@@ -5,6 +5,7 @@ refuses a non-ASCII request line, so the request has to reach it.
 """
 
 import contextlib
+import socket
 import threading
 import unittest
 import urllib.parse
@@ -137,3 +138,42 @@ class Head(unittest.TestCase):
         with serving({"/f.png": (200, png(2160, 3840))}) as (base, _a, _r):
             self.assertEqual(sources.remote_size(base + "/f.png", 5),
                              (2160, 3840))
+
+
+@contextlib.contextmanager
+def cutting_short():
+    """A server whose chunked reply ends mid-chunk and hangs up."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(4)
+
+    def serve():
+        while True:
+            try:
+                conn, _addr = listener.accept()
+            except OSError:
+                return
+            conn.recv(4096)
+            conn.sendall(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked"
+                         b"\r\n\r\n10\r\n\x89PNGabc")
+            conn.close()
+    threading.Thread(target=serve, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{listener.getsockname()[1]}"
+    finally:
+        listener.close()
+
+
+class CutShort(unittest.TestCase):
+    def test_a_transfer_that_stops_partway_is_a_reason_not_a_crash(self):
+        dest = DIR / "cut.png"
+        DIR.mkdir(parents=True, exist_ok=True)
+        with cutting_short() as base, \
+             self.assertRaisesRegex(FetchError, "cut short"):
+            download(base + "/x.png", dest)
+        self.assertFalse(dest.exists())
+
+    def test_the_same_holds_for_a_head(self):
+        with cutting_short() as base, \
+             self.assertRaisesRegex(FetchError, "cut short"):
+            fetch_head(base + "/x.png", 1000, 3)

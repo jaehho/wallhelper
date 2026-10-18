@@ -15,7 +15,6 @@ import json
 import random
 import re
 import time
-import urllib.error
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -24,7 +23,14 @@ from typing import NamedTuple
 
 from .config import needs_setup
 from .library import measure, measure_stream, remember, slugify
-from .net import FetchError, describe, download, fetch_head, fetch_url
+from .net import (
+    FAILURES,
+    FetchError,
+    describe,
+    download,
+    fetch_head,
+    fetch_url,
+)
 from .paths import DIR
 
 _REPLACE_PAIR_LEN = 2
@@ -112,8 +118,7 @@ def _resolve(spec: dict, timeout: int = 30) -> tuple[list | None, str]:
         try:
             reply = fetch_url(url, timeout=timeout,
                               headers=spec.get("headers"))
-        except (urllib.error.URLError, OSError, TimeoutError,
-                ValueError) as problem:
+        except FAILURES as problem:
             return None, describe(problem)
         try:
             document = json.loads(reply)

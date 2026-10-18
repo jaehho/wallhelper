@@ -4,6 +4,7 @@ The network is mocked throughout: these pin the resolution steps and the
 filename the reply turns into, not whether any API is up today.
 """
 
+import http.client
 import json
 import struct
 import time
@@ -312,6 +313,11 @@ class ListSource(Source):
         got = self.listing({"url": "https://example.com/api", "image": "{p}"},
                            error=TimeoutError("timed out"))
         self.assertEqual(got.complaint, "timed out")
+
+    def test_a_reply_cut_short_says_so(self):
+        got = self.listing({"url": "https://example.com/api", "image": "{p}"},
+                           error=http.client.IncompleteRead(b"{"))
+        self.assertEqual(got.complaint, "the transfer was cut short")
 
     def test_a_reply_that_is_not_json_says_so(self):
         got = self.listing({"url": "https://example.com/api", "image": "{p}"},
