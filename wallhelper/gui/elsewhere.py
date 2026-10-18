@@ -62,7 +62,7 @@ class ElsewhereBar(Gtk.Box):
         )
         self.more_btn.add_css_class("plate-action")
         self.more_btn.set_cursor(self.pointer)
-        self.more_btn.connect("clicked", lambda _b: self.toggle())
+        self.more_btn.connect("clicked", self.toggle)
         head.append(self.more_btn)
 
         # One muted line per source that has nothing to show, and why.
@@ -84,7 +84,7 @@ class ElsewhereBar(Gtk.Box):
         )
         self.append(self.full_scroller)
 
-    def toggle(self):
+    def toggle(self, _button=None):
         self.expanded = not self.expanded
         self.full_scroller.set_visible(self.expanded)
         self.more_btn.set_label("LESS" if self.expanded else "MORE")

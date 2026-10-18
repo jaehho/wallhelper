@@ -4,6 +4,10 @@ A source row in Settings is a button, so a bare D, F, E, O or G reaches the
 window's key handler with focus inside the panel. Each of them acts on the
 window behind it: D deletes the wallpaper, F starts a fetch. No display is
 opened; on_key only reads panel state, so a stand-in for the window will do.
+
+The stand-in's handlers are autospecced from the real classes, so a key
+the window maps to a handler that cannot take the call fails here, not
+on someone's keyboard.
 """
 
 import unittest
@@ -11,6 +15,7 @@ from unittest import mock
 
 from tests import guard
 from wallhelper.gui import window
+from wallhelper.gui.elsewhere import ElsewhereBar
 
 from gi.repository import Gdk  # isort: skip -- after gui pins the version
 
@@ -19,8 +24,17 @@ def setUpModule():
     guard()
 
 
+HANDLERS = ("on_delete", "on_fetch", "on_source", "on_undo",
+            "open_guide", "open_settings", "open_shortcuts")
+
+
 def stand_in(settings=False, shortcuts=False, guide=False):
     win = mock.Mock()
+    # Mock takes any call, which is how E raised on every press unseen.
+    spec = mock.create_autospec(window.Window, instance=True)
+    for name in HANDLERS:
+        setattr(win, name, getattr(spec, name))
+    win.elsewhere = mock.create_autospec(ElsewhereBar, instance=True)
     win.get_focus.return_value = None
     win.settings_panel.get_reveal_child.return_value = settings
     win.shortcuts_panel.get_reveal_child.return_value = shortcuts
@@ -38,16 +52,13 @@ def release(win, keyval, code=0):
 
 
 class SettingsOpen(unittest.TestCase):
-    ACTIONS = ("on_delete", "on_fetch", "on_source", "on_undo",
-               "open_guide", "open_settings", "open_shortcuts")
-
     def test_letters_do_nothing_behind_the_panel(self):
         for key in (Gdk.KEY_d, Gdk.KEY_u, Gdk.KEY_f, Gdk.KEY_e, Gdk.KEY_o,
                     Gdk.KEY_g, Gdk.KEY_comma, Gdk.KEY_question):
             with self.subTest(key=Gdk.keyval_name(key)):
                 win = stand_in(settings=True)
                 self.assertFalse(press(win, key))
-                for name in self.ACTIONS:
+                for name in HANDLERS:
                     getattr(win, name).assert_not_called()
                 win.elsewhere.toggle.assert_not_called()
 
@@ -67,6 +78,32 @@ class SettingsOpen(unittest.TestCase):
         win.on_delete.assert_called_once()
         self.assertTrue(press(win, Gdk.KEY_f))
         win.on_fetch.assert_called_once()
+
+
+class EveryKey(unittest.TestCase):
+    """Each shortcut reaches its handler, called the way on_key calls it."""
+
+    def test_each_letter_runs_its_handler_once(self):
+        for key, handler in (
+            (Gdk.KEY_question, "open_shortcuts"),
+            (Gdk.KEY_g, "open_guide"), (Gdk.KEY_G, "open_guide"),
+            (Gdk.KEY_comma, "open_settings"),
+            (Gdk.KEY_d, "on_delete"), (Gdk.KEY_D, "on_delete"),
+            (Gdk.KEY_u, "on_undo"), (Gdk.KEY_U, "on_undo"),
+            (Gdk.KEY_o, "on_source"), (Gdk.KEY_O, "on_source"),
+            (Gdk.KEY_f, "on_fetch"), (Gdk.KEY_F, "on_fetch"),
+        ):
+            with self.subTest(key=Gdk.keyval_name(key)):
+                win = stand_in()
+                self.assertTrue(press(win, key))
+                getattr(win, handler).assert_called_once()
+
+    def test_e_toggles_elsewhere(self):
+        for key in (Gdk.KEY_e, Gdk.KEY_E):
+            with self.subTest(key=Gdk.keyval_name(key)):
+                win = stand_in()
+                self.assertTrue(press(win, key))
+                win.elsewhere.toggle.assert_called_once()
 
 
 class KeyRepeat(unittest.TestCase):
