@@ -322,7 +322,8 @@ def _gio(*args: str) -> subprocess.CompletedProcess[str]:
     a non-zero exit is for the caller to read."""
     try:
         return subprocess.run(["gio", *args], capture_output=True,
-                              text=True, timeout=_GIO_TIMEOUT_S, check=False)
+                              text=True, errors="replace",
+                              timeout=_GIO_TIMEOUT_S, check=False)
     except subprocess.SubprocessError as err:
         raise OSError(str(err)) from err
 

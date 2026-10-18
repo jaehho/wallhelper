@@ -36,7 +36,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
-UNDO_SECONDS = 7
+LONG_TOAST_SECONDS = 7
 
 
 class Window(Adw.ApplicationWindow):
@@ -172,7 +172,7 @@ class Window(Adw.ApplicationWindow):
         same, so nothing here needs the pointer."""
         self.withdraw_undo()
         toast = Adw.Toast(
-            title=f"{gone.title} — moved to Trash", timeout=UNDO_SECONDS,
+            title=f"{gone.title} — moved to Trash", timeout=LONG_TOAST_SECONDS,
             button_label="UNDO", priority=Adw.ToastPriority.HIGH,
         )
         toast.connect("button-clicked", lambda _t: self.on_undo())
@@ -252,7 +252,7 @@ class Window(Adw.ApplicationWindow):
                 self.offer_undo(gone)
             else:
                 self.toast(f"{gone.title} — deleted for good, "
-                           "the Trash refused it", timeout=UNDO_SECONDS,
+                           "the Trash refused it", timeout=LONG_TOAST_SECONDS,
                            priority=Adw.ToastPriority.HIGH)
         self.refresh()
 
@@ -267,7 +267,7 @@ class Window(Adw.ApplicationWindow):
             restore(gone.path)
         except OSError:
             self.toast(f"Couldn't restore {gone.title}; it is still in "
-                       "the Trash", timeout=UNDO_SECONDS)
+                       "the Trash", timeout=LONG_TOAST_SECONDS)
             return
         self.on_pick(None, gone.path)
         self.toast(f"{gone.title} — restored")
