@@ -16,8 +16,24 @@ Built for Hyprland and hyprpaper. The window is GTK4 and libadwaita.
 paru -S wallhelper-git
 ```
 
-Or from a checkout: `make install`. See `packaging/` for the recipe and the
-AUR workflow.
+Or from a checkout, which is how it runs on the author's machine and what
+contributors use:
+
+```sh
+make install
+```
+
+That puts a `wallhelper` launcher and a desktop entry under `~/.local`: no
+sudo, nothing in `/usr`, no package. The launcher runs the checkout on the
+system Python, so `git pull` is the update. On the author's machine the
+fetch timer (in the dotfiles repo) calls this launcher.
+
+The window needs `python-gobject`, `gtk4` and `libadwaita` from the
+distribution; the other commands need only Python 3.11. `make uninstall`
+removes the launcher and the entry and leaves the photos, config and state
+alone.
+
+See `packaging/` for the recipe and the AUR workflow.
 
 ## Use
 
@@ -135,7 +151,7 @@ the shipped sources stay shipped, so they keep improving.
 make test     # python -m unittest discover -s tests -t .
 make lint     # ruff
 make run      # the window, straight from the source tree
-make install  # build and install the Arch package
+make install  # the launcher and desktop entry in ~/.local, no sudo
 ```
 
 `PRODUCT.md` is what this is and what it must never become. GitHub issues hold
