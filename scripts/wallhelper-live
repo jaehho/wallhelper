@@ -1,0 +1,34 @@
+#!/bin/sh
+# wallhelper from the working checkout. Installed by `make install` as
+# wallhelper (see also asst's wrapper, which this mirrors); the fetch
+# timer and the desktop entry both call it by that name. WALLHELPER_SRC
+# points at another tree.
+#
+# Rules this relies on:
+#   - the system python, on purpose: python-gobject, gtk4 and libadwaita
+#     are distribution packages, which a venv would not see
+#   - no build step: the tree is what runs
+#   - exec, so the app is this process (signals, one PID, exit status)
+set -eu
+
+# The checkout this was installed from. `make install` rewrites the
+# DEFAULT_ROOT line only; the @ROOT@ below stays a sentinel, so a run out
+# of scripts/ still recognizes an uninstalled copy.
+DEFAULT_ROOT="@ROOT@"
+if [ "$DEFAULT_ROOT" = "@ROOT@" ]; then
+  d=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+  if [ -f "$d/../wallhelper/__main__.py" ]; then
+    DEFAULT_ROOT=$(CDPATH= cd -- "$d/.." && pwd)
+  else
+    DEFAULT_ROOT="${HOME}/projects/wallhelper"
+  fi
+fi
+ROOT="${WALLHELPER_SRC:-$DEFAULT_ROOT}"
+
+if [ ! -f "$ROOT/wallhelper/__main__.py" ]; then
+  echo "wallhelper-live: no checkout at $ROOT (set WALLHELPER_SRC)" >&2
+  exit 1
+fi
+
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+exec /usr/bin/python -m wallhelper "$@"

@@ -16,7 +16,7 @@ cd /tmp; rm -rf wallhelper-pkgtest; mkdir wallhelper-pkgtest; cd wallhelper-pkgt
 cp ~/projects/wallhelper/packaging/PKGBUILD .
 # temporarily build from the local repo instead of GitHub:
 sed -i 's#git+https://github.com/jaehho/wallhelper.git#git+file:///home/jaeho/projects/wallhelper#' PKGBUILD
-makepkg -f            # build; add -si to also install
+makepkg -f            # build; the package lands in this directory
 ```
 
 `makepkg` runs the test suite in `check()`, so a broken build fails here rather
@@ -39,10 +39,10 @@ than on the next daily fetch.
 
 ## Update
 
-`-git` packages track `main` automatically, and `/etc/paru.conf` here has
-`Devel` on, so `paru -Syu` / `dotfiles sync` rebuilds whenever this
-repo gets new commits. Only re-touch the AUR when the recipe itself changes
-(deps, install layout), and regenerate `.SRCINFO` when you do.
+`-git` packages track `main` automatically, so there is no version to
+bump. Only re-touch the AUR when the recipe itself changes (deps,
+install layout), and regenerate `.SRCINFO` when you do.
 
-`dotfiles` reports whether the installed package matches this
-repo's HEAD.
+The author's machine does not install this package. `make install` at
+the top of the repo runs the checkout (see the README), so `git pull`
+is its update.
