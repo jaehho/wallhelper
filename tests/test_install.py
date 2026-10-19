@@ -68,11 +68,12 @@ class Install(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         return done
 
-    def launch(self, *args, **env):
-        """Run the installed launcher from a directory that is not the
-        checkout, so a hit on the tree cannot come from the cwd."""
+    def launch(self, *args, cwd=None, **env):
+        """Run the installed launcher, by default from a directory that
+        is not the checkout, so a hit on the tree cannot come from the
+        cwd."""
         return subprocess.run(
-            [str(self.launcher), *args], cwd=self.scratch,
+            [str(self.launcher), *args], cwd=cwd or self.scratch,
             env={**self.env, **env}, capture_output=True, text=True,
             check=False)
 
@@ -121,6 +122,42 @@ class Install(unittest.TestCase):
         self.assertIn(f'\nDEFAULT_ROOT="{CHECKOUT}"\n', installed)
         self.assertNotIn('\nDEFAULT_ROOT="@ROOT@"\n', installed)
 
+    def test_install_replaces_a_symlink_and_spares_what_it_pointed_at(self):
+        # Writing through a link would empty its target, and the
+        # target of a link left by hand could be the template itself.
+        stash = self.scratch / "stash"
+        stash.mkdir()
+        for dest in (self.launcher, self.entry):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            target = stash / dest.name
+            target.write_text("keep")
+            dest.symlink_to(target)
+        self.make("install")
+        self.assertEqual({p.read_text() for p in stash.iterdir()}, {"keep"})
+        for dest in (self.launcher, self.entry):
+            with self.subTest(dest.name):
+                self.assertFalse(dest.is_symlink())
+        self.assertEqual(
+            {x for x in self.files() if not x.startswith("stash/")},
+            INSTALLED)
+        self.assertTrue(os.access(self.launcher, os.X_OK))
+
+    def test_a_failed_install_leaves_the_installed_launcher_alone(self):
+        self.make("install")
+        # A checkout whose launcher template cannot be read: sed fails.
+        broken = self.scratch / "broken"
+        (broken / "scripts/wallhelper-live").mkdir(parents=True)
+        shutil.copy(CHECKOUT / "Makefile", broken)
+        shutil.copytree(CHECKOUT / "packaging", broken / "packaging")
+        before = self.files()
+        done = subprocess.run(
+            ["make", "-C", str(broken), "install"], env=self.env,
+            capture_output=True, text=True, check=False)
+        self.assertNotEqual(done.returncode, 0)
+        # The same launcher, and no half-written file beside it.
+        self.assertEqual(self.files(), before)
+        self.assertTrue(os.access(self.launcher, os.X_OK))
+
     def test_the_entry_launches_by_the_absolute_launcher_path(self):
         self.make("install")
         lines = self.entry.read_text().splitlines()
@@ -138,6 +175,21 @@ class Install(unittest.TestCase):
         self.make("install")
         done = self.launch("--help")
         self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("usage: wallhelper", done.stdout)
+
+    @unittest.skipUnless(PYTHON.exists(), f"{PYTHON} is not installed")
+    def test_a_wallhelper_package_in_the_cwd_does_not_shadow_the_tree(self):
+        # Another clone or a worktree: run from inside it, the launcher
+        # still runs the checkout it was installed from.
+        other = self.scratch / "other"
+        (other / "wallhelper").mkdir(parents=True)
+        (other / "wallhelper/__init__.py").write_text("")
+        (other / "wallhelper/__main__.py").write_text(
+            "print('OTHER TREE RAN')\n")
+        self.make("install")
+        done = self.launch("--help", cwd=other)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("OTHER TREE RAN", done.stdout)
         self.assertIn("usage: wallhelper", done.stdout)
 
     @unittest.skipUnless(PYTHON.exists(), f"{PYTHON} is not installed")

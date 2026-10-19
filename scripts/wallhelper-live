@@ -8,6 +8,9 @@
 #   - the system python, on purpose: python-gobject, gtk4 and libadwaita
 #     are distribution packages, which a venv would not see
 #   - no build step: the tree is what runs
+#   - -P, so the working directory is not on sys.path: run from another
+#     clone or a worktree, this checkout still runs, not the wallhelper/
+#     package that happens to be beside the caller
 #   - exec, so the app is this process (signals, one PID, exit status)
 set -eu
 
@@ -31,4 +34,4 @@ if [ ! -f "$ROOT/wallhelper/__main__.py" ]; then
 fi
 
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
-exec /usr/bin/python -m wallhelper "$@"
+exec /usr/bin/python -P -m wallhelper "$@"
