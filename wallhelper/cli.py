@@ -37,8 +37,8 @@ def cmd_fetch(args) -> int:
     for delay in (30, 60, 120, 240) if args.wait else ():
         if run.kind != FAILED:
             break
-        print(f"wallhelper: no source answered; retrying in {delay}s",
-              file=sys.stderr)
+        print(f"wallhelper: no source answered ({run.message}); "
+              f"retrying in {delay}s", file=sys.stderr)
         time.sleep(delay)
         run = fetch_morning()
 
