@@ -184,7 +184,7 @@ def stylesheet(colors: dict[str, str]) -> str:
                     color: mix({colors['overlay2']}, {colors['text']}, 0.35); }}
     .field-label {{ font-size: 9px;  color: {colors['overlay0']}; }}
     .footnote    {{ font-family: {DISPLAY}; font-size: 11px;
-                    color: {colors['overlay0']}; }}
+                    color: {colors['overlay2']}; }}
 
     .chip {{
         background: alpha({colors['text']}, 0.07); background-image: none;
@@ -289,7 +289,7 @@ def stylesheet(colors: dict[str, str]) -> str:
     }}
 
     .status {{ font-family: {DISPLAY}; font-size: 11px; }}
-    .status-ok  {{ color: {colors['overlay0']}; }}
+    .status-ok  {{ color: {colors['overlay2']}; }}
     .status-bad {{ color: mix({colors['maroon']}, {colors['text']}, 0.4); }}
 
     .key-name {{
