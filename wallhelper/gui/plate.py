@@ -70,7 +70,7 @@ class Plate(Gtk.Box):
 
         self.delete_btn = Gtk.Button(
             label="DELETE", margin_start=24,
-            tooltip_text="Delete this photograph for good  (D)",
+            tooltip_text="Move this photograph to the Trash  (D)",
         )
         self.delete_btn.add_css_class("plate-action")
         self.delete_btn.add_css_class("danger")

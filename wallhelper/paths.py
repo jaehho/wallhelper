@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 DIR = Path(os.environ.get("WALLHELPER_DIR",
-                          Path.home() / "Pictures/wallpapers"))
+                          Path.home() / "Media/wallpapers"))
 KEPT = DIR / "kept"
 LEGACY_KEPT = DIR / "liked"
 CREDITS = DIR / ".credits"

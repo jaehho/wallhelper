@@ -108,3 +108,37 @@ class Outside(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(outside.is_file())
         wastebasket.assert_not_called()
+
+
+class Info(unittest.TestCase):
+    """`info` says what there is, and omits what there isn't.
+
+    A photograph with no recorded place should not print 'unknown' in
+    its place -- principle 5 is to leave the line out.
+    """
+
+    def info(self, **fields):
+        filled = {"file": "a.jpg", "title": "", "place": "", "date": "",
+                  "source": "bing", "author": "", "url": ""}
+        filled.update(fields)
+        out = io.StringIO()
+        with mock.patch.object(cli, "current_image",
+                               return_value=Path("/x/a.jpg")), \
+                mock.patch.object(cli, "label", return_value=filled), \
+                contextlib.redirect_stdout(out):
+            code = cli.cmd_info(argparse.Namespace(notify=False))
+        return code, out.getvalue()
+
+    def test_a_field_with_something_in_it_is_printed(self):
+        code, said = self.info(title="Follow the trail")
+        self.assertEqual(code, 0)
+        self.assertIn("title", said)
+        self.assertIn("Follow the trail", said)
+
+    def test_an_empty_field_is_omitted_rather_than_unknown(self):
+        code, said = self.info()
+        self.assertEqual(code, 0)
+        self.assertNotIn("unknown", said)
+        self.assertNotIn("title:", said)
+        self.assertNotIn("place:", said)
+        self.assertIn("source:", said)

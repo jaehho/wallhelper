@@ -192,7 +192,8 @@ class ElsewhereBar(Gtk.Box):
             valign=Gtk.Align.START,
         )
         button.add_css_class("grid-tile")
-        tip = cand.get("title") or cand.get("name") or ""
+        tip = (cand.get("title") or cand.get("credit") or cand.get("name")
+               or "")
         button.set_tooltip_text(tip)
         button.set_cursor(self.pointer)
         button.connect("clicked", self._pick, cand)
