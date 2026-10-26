@@ -73,15 +73,12 @@ def stylesheet(colors: dict[str, str]) -> str:
     return f"""
     window.wallhelper {{ background: {colors['crust']}; }}
 
-    /* Scrim: transparent over the top of the photograph, opaque under the
-       plate. Ends just short of solid so the image still shows through. */
+    /* A caption band at the foot of the grid, not a hero scrim: the
+       photograph is already on the desktop. A few px of padding, not the
+       72px top that used to clear a full-bleed image. */
     .plate {{
-        background: linear-gradient(to top,
-            alpha({colors['crust']}, 0.97) 0%,
-            alpha({colors['crust']}, 0.94) 62%,
-            alpha({colors['crust']}, 0.72) 84%,
-            alpha({colors['crust']}, 0.00) 100%);
-        padding: 72px 32px 26px 32px;
+        background: alpha({colors['crust']}, 0.92);
+        padding: 10px 22px 14px 22px;
     }}
 
     .plate-title {{
@@ -209,24 +206,8 @@ def stylesheet(colors: dict[str, str]) -> str:
     }}
     .field:focus-within {{ border-bottom-color: {colors['blue']}; }}
 
-    /* The corner sits on bare photograph. A short scrim, the mirror of the
-       plate's, keeps it legible over a bright sky. */
-    .top-scrim {{
-        background: linear-gradient(to bottom,
-            alpha({colors['crust']}, 0.70) 0%,
-            alpha({colors['crust']}, 0.34) 46%,
-            alpha({colors['crust']}, 0.00) 100%);
-        padding: 13px 14px 52px 14px;
-    }}
-
-    /* Unlike the plate, the corner can end up over white cloud, where the
-       plate's mid-grey disappears. Full-strength text plus a shadow, so it
-       reads on any photograph. */
-    .corner-action {{
-        color: {colors['text']};
-        text-shadow: 0 1px 4px alpha(black, 0.75);
-    }}
-    .corner-action:hover {{ color: white; }}
+    /* The corner actions rode a hero scrim that is gone; they now sit on
+       the plate's action row and use the plate-action style. */
 
     .backdrop {{ background: alpha({colors['crust']}, 0.62); }}
     .shortcuts {{

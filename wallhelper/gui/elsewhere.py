@@ -77,7 +77,10 @@ class ElsewhereBar(Gtk.Box):
             margin_top=8,
         )
         self.full_scroller = Gtk.ScrolledWindow(
-            max_content_height=320, propagate_natural_height=True,
+            # Cap near 40% of the default window height once the row and
+            # any note line are counted in: expanded Elsewhere is a
+            # drawer over the collection, not a replacement for it.
+            max_content_height=210, propagate_natural_height=True,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
             child=self.full, visible=False,
