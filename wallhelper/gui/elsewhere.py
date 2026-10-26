@@ -88,6 +88,8 @@ class ElsewhereBar(Gtk.Box):
         self.expanded = not self.expanded
         self.full_scroller.set_visible(self.expanded)
         self.more_btn.set_label("LESS" if self.expanded else "MORE")
+        if self.expanded:
+            self._fill_full()
 
     def reload(self):
         """Ask every gallery source at once, off the main loop, and paint
@@ -127,19 +129,25 @@ class ElsewhereBar(Gtk.Box):
         return False
 
     def _show(self):
-        """Paint what has answered, in the order the sources are listed."""
+        """Paint what has answered, in the order the sources are listed.
+
+        Only the 8-tile row is built here. The full grid waits for MORE
+        (or E): a window open for seconds should not pay the download and
+        decode bill for tiles nobody asked to see. If the bar is already
+        expanded the grid is refilled from the new candidates.
+        """
         answered = [self.answers[spot] for spot in sorted(self.answers)]
         self.cands = [cand for _name, listing in answered
                       for cand in listing.candidates]
-        for box in (self.row, self.full, self.notes):
+        for box in (self.row, self.notes):
             while (child := box.get_first_child()) is not None:
                 box.remove(child)
 
         for cand in self.cands[:ROW_LIMIT]:
             self.row.append(self.tile(cand, THUMB_W, THUMB_H))
-        for cand in self.cands:
-            self.full.append(self.tile(cand, GRID_W, GRID_H))
         self.more_btn.set_visible(len(self.cands) > ROW_LIMIT)
+        if self.expanded:
+            self._fill_full()
 
         for name, listing in answered:
             if listing.complaint:
@@ -148,6 +156,17 @@ class ElsewhereBar(Gtk.Box):
                 note.add_css_class("elsewhere-note")
                 self.notes.append(note)
         self.notes.set_visible(self.notes.get_first_child() is not None)
+
+    def _fill_full(self):
+        """Build the expanded grid from the candidates already fetched.
+
+        Tiles are cached per (source, url, size), so a collapse and a
+        second expand re-decode nothing that is already up.
+        """
+        while (child := self.full.get_first_child()) is not None:
+            self.full.remove(child)
+        for cand in self.cands:
+            self.full.append(self.tile(cand, GRID_W, GRID_H))
 
     def tile(self, cand: dict, wide: int, high: int) -> Gtk.Button:
         key = (cand["name"], cand["image"], wide)
