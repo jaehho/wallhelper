@@ -9,7 +9,7 @@ of a tab-separated ledger. It reads like an archive card because it is one.
 
 from __future__ import annotations
 
-from ..paths import PALETTE
+from pathlib import Path
 
 DISPLAY = '"Adwaita Sans", sans-serif'
 DATA = '"JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace'
@@ -18,23 +18,47 @@ THUMB_W, THUMB_H = 112, 63       # 16:9, elsewhere row
 GRID_W, GRID_H = 220, 124        # 16:9, collection tiles
 LONG_TOAST_SECONDS = 7           # a toast with something to read in it
 
+# The desktop's Catppuccin Mocha, as waybar and swaync paint it. The
+# stylesheet's "blue" is Mocha's lavender: the accent the current tile's
+# rule and the on-chip share. Used as-is when mocha.css is not readable.
+MOCHA = {
+    "crust": "#11111b", "base": "#1e1e2e", "text": "#cdd6f4",
+    "overlay0": "#6c7086", "overlay2": "#9399b2", "blue": "#b4befe",
+    "maroon": "#eba0ac",
+}
+# Role name in this stylesheet -> @define-color name in mocha.css.
+ROLES = {
+    "crust": "crust", "base": "base", "text": "text",
+    "overlay0": "overlay0", "overlay2": "overlay2",
+    "blue": "lavender", "maroon": "maroon",
+}
+WAYBAR_COLORS = Path.home() / ".config/waybar/mocha.css"
+
 
 def palette() -> dict[str, str]:
-    """The desktop's Solarized-OKLCH palette, so this window sits at the same
-    hue as waybar and swaync instead of inventing its own."""
-    out = {
-        "crust": "#0c1315", "base": "#141c1e", "text": "#cfdadc",
-        "overlay0": "#565f62", "overlay2": "#848e91", "blue": "#3f7dae",
-        "maroon": "#aa5d64",
-    }
+    """The desktop's Catppuccin Mocha, so this window sits at the same
+    hue as waybar and swaync instead of inventing its own.
+
+    Read from waybar's `@define-color` lines when they are there, so a
+    desktop-wide retint reaches this window too; MOCHA when they are
+    not. Role names stay the ones the stylesheet uses.
+    """
+    out = dict(MOCHA)
     try:
-        for line in PALETTE.read_text().splitlines():
-            key, sep, value = line.partition("=")
-            key = key.strip()
-            if sep and key and not key.startswith("#"):
-                out[key] = "#" + value.strip()
+        text = WAYBAR_COLORS.read_text()
     except OSError:
-        pass
+        return out
+    found = {}
+    for line in text.splitlines():
+        if not line.startswith("@define-color "):
+            continue
+        name, _, value = line.removeprefix("@define-color ").partition(" ")
+        value = value.strip().rstrip(";")
+        if value.startswith("#"):
+            found[name.strip()] = value
+    for role, name in ROLES.items():
+        if name in found:
+            out[role] = found[name]
     return out
 
 
