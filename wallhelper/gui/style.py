@@ -9,7 +9,7 @@ of a tab-separated ledger. It reads like an archive card because it is one.
 
 from __future__ import annotations
 
-from ..paths import PALETTE
+from pathlib import Path
 
 DISPLAY = '"Adwaita Sans", sans-serif'
 DATA = '"JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace'
@@ -18,23 +18,47 @@ THUMB_W, THUMB_H = 112, 63       # 16:9, elsewhere row
 GRID_W, GRID_H = 220, 124        # 16:9, collection tiles
 LONG_TOAST_SECONDS = 7           # a toast with something to read in it
 
+# The desktop's Catppuccin Mocha, as waybar and swaync paint it. The
+# stylesheet's "blue" is Mocha's lavender: the accent the current tile's
+# rule and the on-chip share. Used as-is when mocha.css is not readable.
+MOCHA = {
+    "crust": "#11111b", "base": "#1e1e2e", "text": "#cdd6f4",
+    "overlay0": "#6c7086", "overlay2": "#9399b2", "blue": "#b4befe",
+    "maroon": "#eba0ac",
+}
+# Role name in this stylesheet -> @define-color name in mocha.css.
+ROLES = {
+    "crust": "crust", "base": "base", "text": "text",
+    "overlay0": "overlay0", "overlay2": "overlay2",
+    "blue": "lavender", "maroon": "maroon",
+}
+WAYBAR_COLORS = Path.home() / ".config/waybar/mocha.css"
+
 
 def palette() -> dict[str, str]:
-    """The desktop's Solarized-OKLCH palette, so this window sits at the same
-    hue as waybar and swaync instead of inventing its own."""
-    out = {
-        "crust": "#0c1315", "base": "#141c1e", "text": "#cfdadc",
-        "overlay0": "#565f62", "overlay2": "#848e91", "blue": "#3f7dae",
-        "maroon": "#aa5d64",
-    }
+    """The desktop's Catppuccin Mocha, so this window sits at the same
+    hue as waybar and swaync instead of inventing its own.
+
+    Read from waybar's `@define-color` lines when they are there, so a
+    desktop-wide retint reaches this window too; MOCHA when they are
+    not. Role names stay the ones the stylesheet uses.
+    """
+    out = dict(MOCHA)
     try:
-        for line in PALETTE.read_text().splitlines():
-            key, sep, value = line.partition("=")
-            key = key.strip()
-            if sep and key and not key.startswith("#"):
-                out[key] = "#" + value.strip()
+        text = WAYBAR_COLORS.read_text()
     except OSError:
-        pass
+        return out
+    found = {}
+    for line in text.splitlines():
+        if not line.startswith("@define-color "):
+            continue
+        name, _, value = line.removeprefix("@define-color ").partition(" ")
+        value = value.strip().rstrip(";")
+        if value.startswith("#"):
+            found[name.strip()] = value
+    for role, name in ROLES.items():
+        if name in found:
+            out[role] = found[name]
     return out
 
 
@@ -49,15 +73,12 @@ def stylesheet(colors: dict[str, str]) -> str:
     return f"""
     window.wallhelper {{ background: {colors['crust']}; }}
 
-    /* Scrim: transparent over the top of the photograph, opaque under the
-       plate. Ends just short of solid so the image still shows through. */
+    /* A caption band at the foot of the grid, not a hero scrim: the
+       photograph is already on the desktop. A few px of padding, not the
+       72px top that used to clear a full-bleed image. */
     .plate {{
-        background: linear-gradient(to top,
-            alpha({colors['crust']}, 0.97) 0%,
-            alpha({colors['crust']}, 0.94) 62%,
-            alpha({colors['crust']}, 0.72) 84%,
-            alpha({colors['crust']}, 0.00) 100%);
-        padding: 72px 32px 26px 32px;
+        background: alpha({colors['crust']}, 0.92);
+        padding: 10px 22px 14px 22px;
     }}
 
     .plate-title {{
@@ -160,7 +181,7 @@ def stylesheet(colors: dict[str, str]) -> str:
                     color: mix({colors['overlay2']}, {colors['text']}, 0.35); }}
     .field-label {{ font-size: 9px;  color: {colors['overlay0']}; }}
     .footnote    {{ font-family: {DISPLAY}; font-size: 11px;
-                    color: {colors['overlay0']}; }}
+                    color: {colors['overlay2']}; }}
 
     .chip {{
         background: alpha({colors['text']}, 0.07); background-image: none;
@@ -185,24 +206,8 @@ def stylesheet(colors: dict[str, str]) -> str:
     }}
     .field:focus-within {{ border-bottom-color: {colors['blue']}; }}
 
-    /* The corner sits on bare photograph. A short scrim, the mirror of the
-       plate's, keeps it legible over a bright sky. */
-    .top-scrim {{
-        background: linear-gradient(to bottom,
-            alpha({colors['crust']}, 0.70) 0%,
-            alpha({colors['crust']}, 0.34) 46%,
-            alpha({colors['crust']}, 0.00) 100%);
-        padding: 13px 14px 52px 14px;
-    }}
-
-    /* Unlike the plate, the corner can end up over white cloud, where the
-       plate's mid-grey disappears. Full-strength text plus a shadow, so it
-       reads on any photograph. */
-    .corner-action {{
-        color: {colors['text']};
-        text-shadow: 0 1px 4px alpha(black, 0.75);
-    }}
-    .corner-action:hover {{ color: white; }}
+    /* The corner actions rode a hero scrim that is gone; they now sit on
+       the plate's action row and use the plate-action style. */
 
     .backdrop {{ background: alpha({colors['crust']}, 0.62); }}
     .shortcuts {{
@@ -265,7 +270,7 @@ def stylesheet(colors: dict[str, str]) -> str:
     }}
 
     .status {{ font-family: {DISPLAY}; font-size: 11px; }}
-    .status-ok  {{ color: {colors['overlay0']}; }}
+    .status-ok  {{ color: {colors['overlay2']}; }}
     .status-bad {{ color: mix({colors['maroon']}, {colors['text']}, 0.4); }}
 
     .key-name {{

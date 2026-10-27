@@ -11,12 +11,11 @@ import os
 from pathlib import Path
 
 DIR = Path(os.environ.get("WALLHELPER_DIR",
-                          Path.home() / "Pictures/wallpapers"))
+                          Path.home() / "Media/wallpapers"))
 KEPT = DIR / "kept"
 LEGACY_KEPT = DIR / "liked"
 CREDITS = DIR / ".credits"
 CURRENT = DIR / ".current"
-PALETTE = Path.home() / ".config/theme/palette"
 CONFIG = Path(os.environ.get(
     "WALLHELPER_CONFIG", Path.home() / ".config/wallhelper/config.json"))
 THUMBS = Path(os.environ.get("XDG_CACHE_HOME",

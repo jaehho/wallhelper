@@ -144,3 +144,34 @@ class KeyRepeat(unittest.TestCase):
         press(win, Gdk.KEY_f, 41)
         press(win, Gdk.KEY_f, 41)
         self.assertEqual(win.on_fetch.call_count, 2)
+
+
+class Escape(unittest.TestCase):
+    """Esc closes one layer at a time, and the app is the last one."""
+
+    def press_escape(self, **revised):
+        win = stand_in()
+        for name, value in revised.items():
+            if name == "elsewhere_expanded":
+                win.elsewhere.expanded = value
+            else:
+                getattr(win, f"{name}_panel").get_reveal_child.return_value = \
+                    value
+        window.Window.on_key(win, None, Gdk.KEY_Escape, 0, 0)
+        return win
+
+    def test_an_expanded_elsewhere_collapses_before_the_window_closes(self):
+        win = self.press_escape(elsewhere_expanded=True)
+        win.elsewhere.toggle.assert_called_once()
+        win.close.assert_not_called()
+
+    def test_with_nothing_open_esc_closes_the_window(self):
+        win = self.press_escape(elsewhere_expanded=False)
+        win.elsewhere.toggle.assert_not_called()
+        win.close.assert_called_once()
+
+    def test_a_panel_still_wins_over_an_expanded_elsewhere(self):
+        win = self.press_escape(elsewhere_expanded=True, settings=True)
+        win.close_overlays.assert_called_once()
+        win.elsewhere.toggle.assert_not_called()
+        win.close.assert_not_called()

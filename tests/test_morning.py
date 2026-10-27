@@ -232,10 +232,14 @@ class Command(Morning):
                    Outcome(FAILED, "bing", "bing — no route"),
                    Outcome(SAVED, "bing", "bing -> x.jpg")]
         with mock.patch.object(cli, "fetch_morning", side_effect=answers):
-            code, _ = self.run_fetch(wait=True)
+            code, said = self.run_fetch(wait=True)
         self.assertEqual(code, 0)
         self.assertEqual([call.args[0] for call in self.sleep.call_args_list],
                          [30, 60])
+        # The retry line names why it is waiting: a journal-only run has
+        # no other way to see the per-source reasons.
+        self.assertEqual(said.count("bing — no route"), 2)
+        self.assertIn("retrying in 30s", said)
 
     def test_the_timer_does_not_wait_for_what_waiting_cannot_change(self):
         for kind in (HELD, TODAY, UNSET):

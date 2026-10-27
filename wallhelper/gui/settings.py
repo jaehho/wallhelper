@@ -186,16 +186,16 @@ class SettingsPanel(Gtk.Revealer):
         row.set_tooltip_text(
             f"Stop using {name}" if on else f"Use {name}")
         row.connect("clicked", self.on_toggle_source, name, which)
-        if not on:
-            row.set_opacity(0.5)
 
         line = Gtk.Box(spacing=13)
-        mark = Gtk.Label(label="*" if on else "\u00b7",
+        # A word, not a dimmed row: opacity plus a chip is not a state,
+        # and half-opacity text drops under 2:1 against the crust.
+        mark = Gtk.Label(label="ON" if on else "OFF",
                          valign=Gtk.Align.START)
         mark.add_css_class("chip")
         if on:
             mark.add_css_class("on")
-        mark.set_size_request(15, -1)
+        mark.set_size_request(34, -1)
         line.append(mark)
 
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -37,8 +38,8 @@ def cmd_fetch(args) -> int:
     for delay in (30, 60, 120, 240) if args.wait else ():
         if run.kind != FAILED:
             break
-        print(f"wallhelper: no source answered; retrying in {delay}s",
-              file=sys.stderr)
+        print(f"wallhelper: no source answered ({run.message}); "
+              f"retrying in {delay}s", file=sys.stderr)
         time.sleep(delay)
         run = fetch_morning()
 
@@ -113,7 +114,9 @@ def cmd_info(args) -> int:
         print("wallhelper: no active wallpaper", file=sys.stderr)
         return 1
     for key in ("file", "title", "place", "date", "source", "author", "url"):
-        print(f"{key + ':':9}{info[key] or 'unknown'}")
+        # Principle 5: omit what there is nothing to say about.
+        if info[key]:
+            print(f"{key + ':':9}{info[key]}")
     if args.notify:
         body = " · ".join(
             part for part in (info["date"], info["source"].upper(),
@@ -128,7 +131,7 @@ def main() -> int:
         prog="wallhelper",
         description="Bing in the morning, and the ones you saved.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")
 
     p = sub.add_parser("fetch", help="pull the day's photo")
     p.add_argument("-w", "--wait", action="store_true",
@@ -153,6 +156,15 @@ def main() -> int:
         "wallhelper.gui", fromlist=["cmd_gui"]).cmd_gui(args))
 
     args = parser.parse_args()
+    if args.command is None:
+        # A bare `wallhelper` is not a usage error: open the window when
+        # there is a display to open it on, otherwise say what is on screen.
+        if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"):
+            args.func = lambda a: __import__(
+                "wallhelper.gui", fromlist=["cmd_gui"]).cmd_gui(a)
+        else:
+            args.func = cmd_info
+            args.notify = False
     migrate()
     migrate_collection()
     return args.func(args)

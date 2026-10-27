@@ -19,12 +19,15 @@ from gi.repository import Gtk, Pango  # noqa: E402
 
 
 class Plate(Gtk.Box):
-    def __init__(self, pointer, on_delete, on_source):
+    def __init__(self, pointer, on_delete, on_source, chrome=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("plate")
         self.pointer = pointer
         self.on_delete = on_delete
         self.on_source = on_source
+        # App chrome rides on the plate's action row: the scrim that used
+        # to hold it cost a hero-sized band for three words.
+        self.chrome = chrome or {}
         self.url = ""
         self.build()
 
@@ -70,13 +73,36 @@ class Plate(Gtk.Box):
 
         self.delete_btn = Gtk.Button(
             label="DELETE", margin_start=24,
-            tooltip_text="Delete this photograph for good  (D)",
+            tooltip_text="Move this photograph to the Trash  (D)",
         )
         self.delete_btn.add_css_class("plate-action")
         self.delete_btn.add_css_class("danger")
         self.delete_btn.connect("clicked", self.on_delete)
         self.delete_btn.set_cursor(self.pointer)
         row.append(self.delete_btn)
+
+        for text, tip, key in (
+            ("SETTINGS", "Sources and housekeeping  (,)", "settings"),
+            ("?", "Keyboard shortcuts  (?)", "shortcuts"),
+        ):
+            button = Gtk.Button(label=text, tooltip_text=tip,
+                                margin_start=24, valign=Gtk.Align.CENTER)
+            button.add_css_class("plate-action")
+            if self.chrome.get(key):
+                button.connect("clicked", self.chrome[key])
+            button.set_cursor(self.pointer)
+            row.append(button)
+
+        if self.chrome.get("close"):
+            close = Gtk.Button(
+                icon_name="window-close-symbolic",
+                tooltip_text="Close  (Esc)", margin_start=18,
+                valign=Gtk.Align.CENTER,
+            )
+            close.add_css_class("circular")
+            close.add_css_class("close-btn")
+            close.connect("clicked", self.chrome["close"])
+            row.append(close)
 
     def refresh(self, path: Path | None, size: str = ""):
         """No title line rather than a placeholder one. A photograph

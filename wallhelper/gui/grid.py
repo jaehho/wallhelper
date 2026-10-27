@@ -12,6 +12,7 @@ from pathlib import Path
 import gi
 
 from ..library import collection, credits
+from ..paths import DIR
 from .style import GRID_H, GRID_W
 from .thumbs import thumbnail
 
@@ -31,7 +32,7 @@ class CollectionGrid(Gtk.Box):
         self.names: list[str] = []
         self.current: Path | None = None
 
-        self.empty = Gtk.Label(label="Nothing saved yet", xalign=0,
+        self.empty = Gtk.Label(label=f"Nothing saved yet in {DIR}", xalign=0,
                                margin_start=22, margin_top=18)
         self.empty.add_css_class("plate-empty")
         self.append(self.empty)

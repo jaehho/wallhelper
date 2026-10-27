@@ -18,25 +18,37 @@ class Palette(unittest.TestCase):
             path.read_text.side_effect = OSError
         else:
             path.read_text.return_value = text
-        with mock.patch.object(style, "PALETTE", path):
+        with mock.patch.object(style, "WAYBAR_COLORS", path):
             return style.palette()
 
-    def test_a_missing_palette_still_gives_a_full_one(self):
-        # The window has to open on a machine that has no theme file.
+    def test_a_missing_mocha_still_gives_a_full_one(self):
+        # The window has to open on a machine that has no waybar theme.
         found = self.read(None)
         for key in ("crust", "base", "text", "overlay0", "overlay2",
                     "blue", "maroon"):
             self.assertRegex(found[key], r"^#[0-9a-fA-F]{6}$", key)
 
-    def test_the_desktop_wins(self):
-        self.assertEqual(self.read("blue=aabbcc\n")["blue"], "#aabbcc")
+    def test_the_fallback_is_catppuccin_mocha(self):
+        found = self.read(None)
+        self.assertEqual(found["crust"], "#11111b")
+        self.assertEqual(found["blue"], "#b4befe")
+
+    def test_waybar_wins_where_it_speaks(self):
+        text = "@define-color crust #222222;\n@define-color lavender #abcdef;\n"
+        found = self.read(text)
+        self.assertEqual(found["crust"], "#222222")
+        # The stylesheet's "blue" is Mocha's lavender.
+        self.assertEqual(found["blue"], "#abcdef")
+        # A role waybar does not name keeps the fallback.
+        self.assertEqual(found["maroon"], style.MOCHA["maroon"])
 
     def test_comments_and_blanks_are_skipped(self):
-        found = self.read("# a comment\n\nblue=aabbcc\n")
+        found = self.read("# a comment\n\n@define-color lavender #aabbcc\n")
         self.assertEqual(found["blue"], "#aabbcc")
 
-    def test_a_line_with_no_equals_is_not_a_colour(self):
-        self.assertNotIn("nonsense", self.read("nonsense\n"))
+    def test_a_define_without_a_hex_is_not_a_colour(self):
+        found = self.read("@define-color lavender url(foo);\n")
+        self.assertEqual(found["blue"], style.MOCHA["blue"])
 
 
 class Stylesheet(unittest.TestCase):
@@ -47,7 +59,3 @@ class Stylesheet(unittest.TestCase):
         css = style.stylesheet(style.palette())
         self.assertIn("window.wallhelper", css)
         self.assertNotIn("{C[", css)
-
-    def test_a_short_palette_is_an_error_and_not_a_blank_window(self):
-        with self.assertRaises(KeyError):
-            style.stylesheet({"crust": "#000000"})

@@ -38,7 +38,7 @@ from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 
 class Window(Adw.ApplicationWindow):
-    def __init__(self, app):  # noqa: PLR0915 — GTK widget tree, one constructor
+    def __init__(self, app):
         super().__init__(application=app, title="Wallhelper")
         self.set_default_size(1120, 760)
         self.add_css_class("wallhelper")
@@ -64,32 +64,6 @@ class Window(Adw.ApplicationWindow):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.toasts.set_child(outer)
 
-        top = Gtk.Box(halign=Gtk.Align.FILL, valign=Gtk.Align.START)
-        top.add_css_class("top-scrim")
-        corner = Gtk.Box(spacing=18, halign=Gtk.Align.END, hexpand=True)
-        top.append(corner)
-        for text, tip, handler in (
-            ("SETTINGS", "Sources and housekeeping  (,)",
-             self.open_settings),
-            ("?", "Keyboard shortcuts  (?)", self.open_shortcuts),
-        ):
-            button = Gtk.Button(label=text, tooltip_text=tip,
-                                valign=Gtk.Align.CENTER)
-            button.add_css_class("plate-action")
-            button.add_css_class("corner-action")
-            button.set_cursor(self.pointer)
-            button.connect("clicked", handler)
-            corner.append(button)
-
-        close = Gtk.Button(
-            icon_name="window-close-symbolic", tooltip_text="Close  (Esc)",
-        )
-        close.add_css_class("circular")
-        close.add_css_class("close-btn")
-        close.connect("clicked", lambda _b: self.close())
-        corner.append(close)
-        outer.append(top)
-
         self.elsewhere = ElsewhereBar(
             self.pointer, self.on_adopt, self.toast, self.on_set)
         outer.append(self.elsewhere)
@@ -97,7 +71,10 @@ class Window(Adw.ApplicationWindow):
         self.grid = CollectionGrid(self.pointer, self.on_pick)
         outer.append(self.grid)
 
-        self.plate = Plate(self.pointer, self.on_delete, self.on_source)
+        self.plate = Plate(self.pointer, self.on_delete, self.on_source,
+                           {"settings": self.open_settings,
+                            "shortcuts": self.open_shortcuts,
+                            "close": self.close})
         outer.append(self.plate)
 
         overlay = Gtk.Overlay()
@@ -331,6 +308,10 @@ class Window(Adw.ApplicationWindow):
                     or self.shortcuts_panel.get_reveal_child()
                     or self.guide_panel.get_reveal_child()):
                 self.close_overlays()
+            elif self.elsewhere.expanded:
+                # Esc closes one layer at a time: the expanded Elsewhere
+                # drawer is the innermost thing open.
+                self.elsewhere.toggle()
             else:
                 self.close()
             return True
