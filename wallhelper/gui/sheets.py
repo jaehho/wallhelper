@@ -32,9 +32,10 @@ SHORTCUTS = (
     ("E", "", "Expand or collapse Elsewhere"),
     ("F", "", "Fetch the morning photo now"),
     (",", "", "Settings"),
-    ("?", "", "This list"),
+    ("?", "Ctrl+?", "This list"),
     ("G", "", "Show the welcome guide"),
     ("Esc", "", "Close"),
+    ("Ctrl+W", "Ctrl+Q", "Close the window"),
 )
 
 

@@ -34,7 +34,13 @@ from .thumbs import dimensions
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+
+# Held with any of these, a letter is a chord and not the letter: Ctrl+D
+# must not delete a photograph. Shift is not here, because ? is Shift+/.
+CHORD_MODIFIERS = (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
+                   | Gdk.ModifierType.SUPER_MASK | Gdk.ModifierType.HYPER_MASK
+                   | Gdk.ModifierType.META_MASK)
 
 
 class Window(Adw.ApplicationWindow):
@@ -88,6 +94,12 @@ class Window(Adw.ApplicationWindow):
         for panel in (self.settings_panel, self.shortcuts_panel,
                       self.guide_panel):
             overlay.add_overlay(panel)
+
+        # Ctrl+? is an application accelerator (app.py), and those
+        # activate actions.
+        shortcuts = Gio.SimpleAction(name="shortcuts")
+        shortcuts.connect("activate", lambda *_a: self.open_shortcuts())
+        self.add_action(shortcuts)
 
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self.on_key)
@@ -292,7 +304,7 @@ class Window(Adw.ApplicationWindow):
     def on_key_released(self, _controller, _keyval, code, _state):
         self.held.discard(code)
 
-    def on_key(self, _controller, keyval, code, _state):
+    def on_key(self, _controller, keyval, code, state):
         # GTK4 sends an auto-repeat as more presses with no release between
         # them, and says nothing else to tell it from a fresh one.
         repeat = code in self.held
@@ -327,7 +339,9 @@ class Window(Adw.ApplicationWindow):
             # widget that has focus, and nothing else.
             return False
 
-        if typing:
+        # The chords the window answers never get here: GTK runs them as
+        # application accelerators before the focused widget (app.py).
+        if typing or state & CHORD_MODIFIERS:
             return False
 
         actions = {
