@@ -119,6 +119,13 @@ class Window(Adw.ApplicationWindow):
     def show_panel(self, panel, shown):
         panel.set_reveal_child(shown)
         panel.set_can_target(shown)
+        focus = self.get_focus()
+        if not shown and focus is not None and focus.is_ancestor(panel):
+            # GTK moves focus off a hidden panel only once its slide has
+            # ended; a key typed before then would land in its field.
+            # Move it now, the way GTK would then.
+            self.set_focus(None)
+            self.child_focus(Gtk.DirectionType.TAB_FORWARD)
 
     def open_guide(self, _button=None):
         self.show_panel(self.settings_panel, False)
