@@ -14,10 +14,15 @@ import unittest
 from unittest import mock
 
 from tests import guard
-from wallhelper.gui import window
+from wallhelper.gui import app, window
 from wallhelper.gui.elsewhere import ElsewhereBar
 
 from gi.repository import Gdk  # isort: skip -- after gui pins the version
+
+CTRL = Gdk.ModifierType.CONTROL_MASK
+ALT = Gdk.ModifierType.ALT_MASK
+SHIFT = Gdk.ModifierType.SHIFT_MASK
+CAPS = Gdk.ModifierType.LOCK_MASK
 
 
 def setUpModule():
@@ -43,8 +48,8 @@ def stand_in(settings=False, shortcuts=False, guide=False):
     return win
 
 
-def press(win, keyval, code=0):
-    return window.Window.on_key(win, None, keyval, code, 0)
+def press(win, keyval, code=0, state=0):
+    return window.Window.on_key(win, None, keyval, code, state)
 
 
 def release(win, keyval, code=0):
@@ -144,6 +149,61 @@ class KeyRepeat(unittest.TestCase):
         press(win, Gdk.KEY_f, 41)
         press(win, Gdk.KEY_f, 41)
         self.assertEqual(win.on_fetch.call_count, 2)
+
+
+class Chords(unittest.TestCase):
+    """Ctrl+D is not D: a letter held with Ctrl or Alt does nothing here.
+
+    The chords the window does answer are application accelerators, which
+    GTK runs before this handler; a Ctrl+letter that gets this far is one
+    the window has no use for.
+    """
+
+    LETTERS = (Gdk.KEY_d, Gdk.KEY_u, Gdk.KEY_f, Gdk.KEY_e, Gdk.KEY_o,
+               Gdk.KEY_g, Gdk.KEY_comma, Gdk.KEY_question)
+
+    def test_a_letter_with_ctrl_or_alt_does_nothing(self):
+        for held in (CTRL, ALT, CTRL | SHIFT):
+            for key in self.LETTERS:
+                with self.subTest(key=Gdk.keyval_name(key), held=held):
+                    win = stand_in()
+                    self.assertFalse(press(win, key, state=held))
+                    for name in HANDLERS:
+                        getattr(win, name).assert_not_called()
+                    win.elsewhere.toggle.assert_not_called()
+
+    def test_shift_and_caps_lock_leave_a_letter_a_letter(self):
+        # ? is Shift+/, and Caps Lock turns d into D.
+        for key, held, handler in (
+            (Gdk.KEY_D, SHIFT, "on_delete"),
+            (Gdk.KEY_D, CAPS, "on_delete"),
+            (Gdk.KEY_question, SHIFT, "open_shortcuts"),
+        ):
+            with self.subTest(key=Gdk.keyval_name(key), held=held):
+                win = stand_in()
+                self.assertTrue(press(win, key, state=held))
+                getattr(win, handler).assert_called_once()
+
+
+class AppChords(unittest.TestCase):
+    """Ctrl+W, Ctrl+Q and Ctrl+? are bound on the application, which is
+    what lets them work from a text field: GTK runs those before the
+    focused widget sees the key."""
+
+    def test_each_chord_is_bound(self):
+        wallhelper = app.App()
+        for action, accel in (("window.close", "<Control>w"),
+                              ("app.quit", "<Control>q"),
+                              ("win.shortcuts", "<Control>question")):
+            with self.subTest(action=action):
+                self.assertEqual(
+                    wallhelper.get_accels_for_action(action), [accel])
+
+    def test_ctrl_q_quits(self):
+        wallhelper = app.App()
+        with mock.patch.object(app.App, "quit") as leave:
+            wallhelper.lookup_action("quit").activate(None)
+        leave.assert_called_once_with()
 
 
 class Escape(unittest.TestCase):

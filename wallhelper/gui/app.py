@@ -5,14 +5,31 @@ from __future__ import annotations
 import gi
 
 gi.require_version("Adw", "1")
-from gi.repository import Adw  # noqa: E402
+from gi.repository import Adw, Gio  # noqa: E402
 
 from .window import Window  # noqa: E402
+
+# The chords every window answers: action, accelerator. GTK runs
+# application accelerators in the capture phase, before a focused text
+# field or the window's own key handler sees the key, so these work from
+# the settings fields too. window.close is GTK's own; Ctrl+W and Ctrl+Q
+# come to the same thing here, since nothing runs after the window -- the
+# morning fetch is a timer.
+ACCELS = (
+    ("window.close", "<Control>w"),
+    ("app.quit", "<Control>q"),
+    ("win.shortcuts", "<Control>question"),
+)
 
 
 class App(Adw.Application):
     def __init__(self):
         super().__init__(application_id="dev.jaeho.Wallhelper")
+        leave = Gio.SimpleAction(name="quit")
+        leave.connect("activate", lambda *_a: self.quit())
+        self.add_action(leave)
+        for action, accel in ACCELS:
+            self.set_accels_for_action(action, [accel])
 
     def do_activate(self):
         (self.props.active_window or Window(self)).present()

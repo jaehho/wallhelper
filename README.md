@@ -45,10 +45,7 @@ wallhelper info             what's on screen and where it came from
 wallhelper gui              the same thing with pictures
 ```
 
-In the window: click a tile to set it as wallpaper, `D` deletes (UNDO on the
-message, or `U`, brings it back out of the Trash for a few seconds),
-`E` expands Elsewhere, `O` opens the source page, `F` fetches now, `,` opens
-settings, `?` lists every shortcut, `G` shows the guide.
+In the window: click a tile to set it as wallpaper, `D` deletes (UNDO on the message, or `U`, brings it back out of the Trash for a few seconds), `E` expands Elsewhere, `O` opens the source page, `F` fetches now, `,` opens settings, `?` lists every shortcut, `G` shows the guide. `Ctrl+W` or `Ctrl+Q` closes the window and `Ctrl+?` lists the shortcuts, from the settings fields too; the letters are keys on their own, so `Ctrl+D` deletes nothing.
 
 ## Sources
 
