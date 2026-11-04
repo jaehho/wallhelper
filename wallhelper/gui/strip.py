@@ -173,6 +173,9 @@ class Strip(Gtk.ScrolledWindow):
         self.quiet = False      # the strip moving its own selection
         self.glide = None       # the running centring animation
         self.centring: int | None = None   # waiting for the next frame
+        # Asked for before the list had rows: GTK's own cursor, which the
+        # arrows move from, is not on the selection yet.
+        self.unfocused = False
 
         self.store = Gio.ListStore(item_type=Item)
         self.selection = Gtk.SingleSelection(
@@ -256,6 +259,8 @@ class Strip(Gtk.ScrolledWindow):
         if not count:
             return
         index = max(0, min(index, count - 1))
+        if not self.get_mapped():
+            self.unfocused = True
         self.quiet = quiet
         try:
             self.view.scroll_to(
@@ -283,6 +288,14 @@ class Strip(Gtk.ScrolledWindow):
         if page <= 0:
             return GLib.SOURCE_CONTINUE
         index, self.centring = self.centring, None
+        if self.unfocused:
+            # Laid out now, so there is a row to put the cursor on.
+            self.unfocused = False
+            self.quiet = True
+            try:
+                self.view.scroll_to(index, Gtk.ListScrollFlags.FOCUS, None)
+            finally:
+                self.quiet = False
         target = centred_offset(index, count=self.store.get_n_items(),
                                 page=page)
         if self.glide is not None:
