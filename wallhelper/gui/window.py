@@ -43,6 +43,15 @@ CHORD_MODIFIERS = (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
                    | Gdk.ModifierType.META_MASK)
 
 
+
+def is_ctrl_z(keyval: int, state: Gdk.ModifierType) -> bool:
+    """Ctrl+Z and nothing else held but Caps Lock: Ctrl+Shift+Z is redo
+    elsewhere, and this window has nothing to redo."""
+    held = state & (CHORD_MODIFIERS | Gdk.ModifierType.SHIFT_MASK)
+    return (keyval in (Gdk.KEY_z, Gdk.KEY_Z)
+            and held == Gdk.ModifierType.CONTROL_MASK)
+
+
 class Window(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Wallhelper")
@@ -346,9 +355,7 @@ class Window(Adw.ApplicationWindow):
             # widget that has focus, and nothing else.
             return False
 
-        # The chords the window answers never get here: GTK runs them as
-        # application accelerators before the focused widget (app.py).
-        if typing or state & CHORD_MODIFIERS:
+        if typing:
             return False
 
         actions = {
@@ -361,10 +368,18 @@ class Window(Adw.ApplicationWindow):
             Gdk.KEY_o: self.on_source, Gdk.KEY_O: self.on_source,
             Gdk.KEY_f: self.on_fetch, Gdk.KEY_F: self.on_fetch,
         }
-        if keyval in actions:
-            # Held down, D would thin the collection one photograph per
-            # repeat, each deleted as the neighbour of the last.
-            if not (repeat and keyval in (Gdk.KEY_d, Gdk.KEY_D)):
-                actions[keyval](None)
-            return True
-        return False
+        if state & CHORD_MODIFIERS:
+            # The other chords the window answers never get here: GTK
+            # runs them as application accelerators (app.py) before the
+            # focused widget. Ctrl+Z is not one, so that a settings field
+            # keeps it for its own text.
+            action = self.on_undo if is_ctrl_z(keyval, state) else None
+        else:
+            action = actions.get(keyval)
+        if action is None:
+            return False
+        # Held down, D would thin the collection one photograph per
+        # repeat, each deleted as the neighbour of the last.
+        if not (repeat and keyval in (Gdk.KEY_d, Gdk.KEY_D)):
+            action(None)
+        return True

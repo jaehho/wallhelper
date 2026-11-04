@@ -17,7 +17,7 @@ from tests import guard
 from wallhelper.gui import app, window
 from wallhelper.gui.elsewhere import ElsewhereBar
 
-from gi.repository import Gdk  # isort: skip -- after gui pins the version
+from gi.repository import Gdk, Gtk  # isort: skip -- after gui pins the version
 
 CTRL = Gdk.ModifierType.CONTROL_MASK
 ALT = Gdk.ModifierType.ALT_MASK
@@ -204,6 +204,37 @@ class AppChords(unittest.TestCase):
         with mock.patch.object(app.App, "quit") as leave:
             wallhelper.lookup_action("quit").activate(None)
         leave.assert_called_once_with()
+
+
+class CtrlZ(unittest.TestCase):
+    """Ctrl+Z undoes a delete, as U does. on_key answers it rather than
+    an accelerator, so a field in settings keeps Ctrl+Z for its text."""
+
+    def test_ctrl_z_undoes(self):
+        for key, held in ((Gdk.KEY_z, CTRL), (Gdk.KEY_Z, CTRL | CAPS)):
+            with self.subTest(key=Gdk.keyval_name(key), held=held):
+                win = stand_in()
+                self.assertTrue(press(win, key, state=held))
+                win.on_undo.assert_called_once_with(None)
+
+    def test_other_chords_on_z_do_nothing(self):
+        for key, held in ((Gdk.KEY_Z, CTRL | SHIFT), (Gdk.KEY_z, ALT),
+                          (Gdk.KEY_z, CTRL | ALT), (Gdk.KEY_z, 0)):
+            with self.subTest(key=Gdk.keyval_name(key), held=held):
+                win = stand_in()
+                self.assertFalse(press(win, key, state=held))
+                win.on_undo.assert_not_called()
+
+    def test_a_text_field_keeps_ctrl_z(self):
+        win = stand_in()
+        win.get_focus.return_value = mock.Mock(spec=Gtk.Text)
+        self.assertFalse(press(win, Gdk.KEY_z, state=CTRL))
+        win.on_undo.assert_not_called()
+
+    def test_behind_settings_ctrl_z_does_nothing(self):
+        win = stand_in(settings=True)
+        self.assertFalse(press(win, Gdk.KEY_z, state=CTRL))
+        win.on_undo.assert_not_called()
 
 
 class Escape(unittest.TestCase):

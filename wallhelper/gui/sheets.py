@@ -27,7 +27,7 @@ GUIDE = (
 
 SHORTCUTS = (
     ("D", "", "Delete from the collection"),
-    ("U", "", "Undo the delete, while its message is up"),
+    ("U", "Ctrl+Z", "Undo the delete, while its message is up"),
     ("O", "", "Open the source page"),
     ("E", "", "Expand or collapse Elsewhere"),
     ("F", "", "Fetch the morning photo now"),
