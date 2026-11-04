@@ -17,14 +17,16 @@ from pathlib import Path
 import gi
 
 from ..library import credits
-from .style import GRID_H, GRID_W, TILE_GAP
+from .style import GRID_H, GRID_W, STRIP_PAD, TILE_GAP
 from .thumbs import LOCAL_POOL, thumbnail
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 ARRIVING = "arriving"
 FAILED = "failed"
+GLIDE_MS = 180            # the strip easing the selection to its middle
 
 
 class Item(GObject.Object):
@@ -59,12 +61,40 @@ def mark_for(name: str, *, today: str, before: str, selected: str) -> str:
     return ""
 
 
+def centred_offset(index: int, *, count: int, page: float) -> float:
+    """Where the strip scrolls to put the tile at `index` in its middle,
+    held inside the ends. Every tile is the same width, so this is
+    arithmetic on the count rather than a measurement: right after the
+    store changes, the list has not been laid out again yet."""
+    each = GRID_W + TILE_GAP
+    middle = STRIP_PAD + index * each + each / 2
+    whole = 2 * STRIP_PAD + count * each
+    return max(0.0, min(middle - page / 2, whole - page))
+
+
+def splice_for(old: list[str], new: list[str]) -> tuple[int, int, int, int]:
+    """The one splice that turns `old` into `new`: replace old[at:at+gone]
+    with new[start:stop], as (at, gone, start, stop).
+
+    Only what changed is touched, so a photograph deleted, the morning's
+    arriving, or its place giving way to it moves one tile and leaves the
+    rest where they are, scroll position included."""
+    shortest = min(len(old), len(new))
+    head = 0
+    while head < shortest and old[head] == new[head]:
+        head += 1
+    tail = 0
+    while tail < shortest - head and old[-1 - tail] == new[-1 - tail]:
+        tail += 1
+    return head, len(old) - head - tail, head, len(new) - tail
+
+
 def status_text(item: Item) -> tuple[str, str]:
     """What the morning's place says: a word for the tile, a line under
     it."""
     if item.status == ARRIVING:
-        return "TODAY", "On its way"
-    return "TODAY", item.message or "Did not come"
+        return "THIS MORNING", "On its way"
+    return "THIS MORNING", item.message or "Did not come"
 
 
 class Tile(Gtk.Overlay):
@@ -87,25 +117,32 @@ class Tile(Gtk.Overlay):
         self.add_overlay(self.mark)
 
         self.note = Gtk.Label(
-            halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, wrap=True,
-            justify=Gtk.Justification.CENTER, max_width_chars=26,
-            visible=False,
+            halign=Gtk.Align.FILL, valign=Gtk.Align.CENTER, wrap=True,
+            justify=Gtk.Justification.CENTER, margin_start=14,
+            margin_end=14, visible=False,
         )
         self.note.add_css_class("tile-note")
         self.add_overlay(self.note)
 
     def show(self, buf, *, unreadable: bool = False):
         self.remove_css_class("said")
-        self.picture.set_pixbuf(buf)
+        self._picture(buf)
         self.note.set_text("UNREADABLE" if unreadable else "")
         self.note.set_visible(unreadable)
 
     def say(self, word: str, line: str):
         self.add_css_class("said")
-        self.picture.set_pixbuf(None)
+        self._picture(None)
         self.set_mark(word)
         self.note.set_text(line)
         self.note.set_visible(bool(line))
+
+    def _picture(self, buf):
+        # set_pixbuf will not take None; an empty tile has no paintable.
+        if buf is None:
+            self.picture.set_paintable(None)
+        else:
+            self.picture.set_pixbuf(buf)
 
     def set_mark(self, word: str):
         self.mark.set_text(word)
@@ -134,6 +171,8 @@ class Strip(Gtk.ScrolledWindow):
         self.today = ""
         self.before = ""
         self.quiet = False      # the strip moving its own selection
+        self.glide = None       # the running centring animation
+        self.centring: int | None = None   # waiting for the next frame
 
         self.store = Gio.ListStore(item_type=Item)
         self.selection = Gtk.SingleSelection(
@@ -171,10 +210,12 @@ class Strip(Gtk.ScrolledWindow):
         self.before = before.name if before else ""
         items = ([status] if status else []) + [Item(path) for path in files]
         names = [item.name for item in items]
+        old = self.names()
         self.quiet = True
         try:
-            if names != self.names():
-                self.store.splice(0, self.store.get_n_items(), items)
+            if names != old:
+                at, gone, start, stop = splice_for(old, names)
+                self.store.splice(at, gone, items[start:stop])
                 live = set(names)
                 for stale in [name for name in self.thumbs
                               if name not in live]:
@@ -215,13 +256,11 @@ class Strip(Gtk.ScrolledWindow):
         if not count:
             return
         index = max(0, min(index, count - 1))
-        info = Gtk.ScrollInfo()
-        info.set_center_horizontal(True)
         self.quiet = quiet
         try:
             self.view.scroll_to(
                 index, Gtk.ListScrollFlags.SELECT | Gtk.ListScrollFlags.FOCUS,
-                info)
+                None)
             # scroll_to does not select what is already selected, and a
             # fresh store may hold nothing selected yet.
             if self.selection.get_selected() != index:
@@ -229,6 +268,33 @@ class Strip(Gtk.ScrolledWindow):
         finally:
             self.quiet = False
         self._remark()
+        self.centre(index)
+
+    def centre(self, index: int):
+        """Ease the tile at `index` to the middle, on the next frame: the
+        list may have just changed, and it has a width only once mapped."""
+        if self.centring is None:
+            self.add_tick_callback(self._centre_tick)
+        self.centring = index
+
+    def _centre_tick(self, _widget, _clock) -> bool:
+        adjustment = self.get_hadjustment()
+        page = adjustment.get_page_size()
+        if page <= 0:
+            return GLib.SOURCE_CONTINUE
+        index, self.centring = self.centring, None
+        target = centred_offset(index, count=self.store.get_n_items(),
+                                page=page)
+        if self.glide is not None:
+            self.glide.pause()
+        self.glide = Adw.TimedAnimation(
+            widget=self, value_from=adjustment.get_value(),
+            value_to=target, duration=GLIDE_MS,
+            target=Adw.PropertyAnimationTarget.new(adjustment, "value"),
+            easing=Adw.Easing.EASE_OUT_CUBIC,
+        )
+        self.glide.play()
+        return GLib.SOURCE_REMOVE
 
     def move(self, step: int):
         here = self.selection.get_selected()
@@ -246,6 +312,9 @@ class Strip(Gtk.ScrolledWindow):
 
     def _changed(self, _selection, _position, _count):
         self._remark()
+        here = self.selection.get_selected()
+        if not self.quiet and here != Gtk.INVALID_LIST_POSITION:
+            self.centre(here)
         if not self.quiet and (item := self.selected()) is not None:
             self.on_select(item)
 

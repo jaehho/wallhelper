@@ -44,20 +44,65 @@ class Marks(unittest.TestCase):
 class MorningPlace(unittest.TestCase):
     def test_arriving_and_failed_say_different_things(self):
         self.assertEqual(strip.status_text(strip.Item(status=strip.ARRIVING)),
-                         ("TODAY", "On its way"))
+                         ("THIS MORNING", "On its way"))
         failed = strip.Item(status=strip.FAILED,
                             message="bing \u2014 Unauthorized")
         self.assertEqual(strip.status_text(failed),
-                         ("TODAY", "bing \u2014 Unauthorized"))
+                         ("THIS MORNING", "bing \u2014 Unauthorized"))
 
     def test_a_failure_with_no_reason_still_says_something(self):
         self.assertEqual(
             strip.status_text(strip.Item(status=strip.FAILED)),
-            ("TODAY", "Did not come"))
+            ("THIS MORNING", "Did not come"))
 
     def test_only_a_photograph_has_a_file_name(self):
         self.assertEqual(strip.Item(Path("/p/a.jpg")).name, "a.jpg")
         self.assertEqual(strip.Item(status=strip.FAILED).name, ":failed")
+
+
+class Splice(unittest.TestCase):
+    def apply(self, old, new):
+        at, gone, start, stop = strip.splice_for(old, new)
+        return old[:at] + new[start:stop] + old[at + gone:]
+
+    def test_each_change_touches_only_what_changed(self):
+        base = ["c", "b", "a"]
+        for new, want in (
+            ([":failed", "c", "b", "a"], (0, 0, 0, 1)),   # place arrives
+            (["c", "a"], (1, 1, 1, 1)),                    # a delete
+            (["d", "c", "b", "a"], (0, 0, 0, 1)),          # a new morning
+            (["c", "b", "a"], (3, 0, 3, 3)),               # nothing
+        ):
+            with self.subTest(new=new):
+                self.assertEqual(strip.splice_for(base, new), want)
+                self.assertEqual(self.apply(base, new), new)
+
+    def test_the_mornings_place_giving_way_to_its_photograph(self):
+        old, new = [":arriving", "c", "b"], ["d", "c", "b"]
+        self.assertEqual(strip.splice_for(old, new), (0, 1, 0, 1))
+        self.assertEqual(self.apply(old, new), new)
+
+    def test_anything_at_all_still_comes_out_right(self):
+        for old, new in ((["a"], []), ([], ["a", "b"]), (["a", "b"], ["b", "a"]),
+                         (["a", "a"], ["a"]), (["x", "a", "x"], ["x", "x"])):
+            with self.subTest(old=old, new=new):
+                self.assertEqual(self.apply(old, new), new)
+
+
+class Centre(unittest.TestCase):
+    def test_a_tile_is_eased_to_the_middle_and_held_inside_the_ends(self):
+        each = strip.GRID_W + strip.TILE_GAP
+        page = 1000.0
+        middle = strip.centred_offset(10, count=40, page=page)
+        self.assertEqual(middle, strip.STRIP_PAD + 10 * each + each / 2
+                         - page / 2)
+        self.assertEqual(strip.centred_offset(0, count=40, page=page), 0.0)
+        whole = 2 * strip.STRIP_PAD + 40 * each
+        self.assertEqual(strip.centred_offset(39, count=40, page=page),
+                         whole - page)
+
+    def test_a_strip_shorter_than_the_page_does_not_scroll(self):
+        self.assertEqual(strip.centred_offset(2, count=3, page=2000.0), 0.0)
 
 
 class Due(unittest.TestCase):

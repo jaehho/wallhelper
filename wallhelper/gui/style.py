@@ -16,6 +16,7 @@ DATA = '"JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace'
 
 GRID_W, GRID_H = 220, 124        # 16:9, the strip's tiles (and the cache's)
 TILE_GAP = 12                    # between two tiles
+STRIP_PAD = 18                   # the strip's ends, before the first tile
 STRIP_W, STRIP_H = 1600, 226     # until hyprland.lua docks it full width
 LONG_TOAST_SECONDS = 7           # a toast with something to read in it
 
@@ -101,7 +102,7 @@ def stylesheet(colors: dict[str, str]) -> str:
     /* The strip. The green rule says 'on the wall now', and the wall
        follows the selection, so it sits under the selected tile. */
     .strip-scroll, listview.strip {{ background: none; }}
-    listview.strip {{ padding: 12px 18px 16px 18px; }}
+    listview.strip {{ padding: 12px {STRIP_PAD}px 16px {STRIP_PAD}px; }}
     listview.strip > row {{
         background: none; padding: 0 0 5px 0; margin: 0 {TILE_GAP // 2}px;
         border-radius: 0; outline-color: transparent;

@@ -46,6 +46,9 @@ class Plate(Gtk.Box):
 
         row = Gtk.Box(spacing=18, margin_top=6)
         words.append(row)
+        # Only the last fact gives way. A label that may shorten is
+        # measured a letter short with the tracking on, so place and size,
+        # which are short, never shorten.
         self.place = self._fact(row, "plate-place", expand=False)
         self.size = self._fact(row, "plate-row", expand=False)
         self.source = Gtk.Button(label="",
@@ -71,8 +74,9 @@ class Plate(Gtk.Box):
         actions.append(done)
 
     def _fact(self, row, css, *, expand):
-        fact = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END,
-                         single_line_mode=True, hexpand=expand)
+        fact = Gtk.Label(xalign=0, single_line_mode=True, hexpand=expand)
+        if expand:
+            fact.set_ellipsize(Pango.EllipsizeMode.END)
         fact.add_css_class(css)
         row.append(fact)
         return fact
