@@ -2,7 +2,7 @@
 
 Bing in the morning, and the ones you saved.
 
-Every morning it fetches Bing's picture of the day, sets it as the wallpaper, and keeps it. The window is a gallery of that collection, and choosing one puts it back on the wall. Photographs you delete go to Trash. There is no countdown and nothing to tidy up later.
+Every morning it fetches Bing's picture of the day, sets it as the wallpaper, and keeps it. Open it and your desktop is the preview: a strip of everything kept sits along the bottom edge of an empty workspace, and moving along it puts each photograph on the wall. Close it and the one on the wall stays. Photographs you delete go to Trash. There are no settings and nothing to tidy up later.
 
 Built for Hyprland and hyprpaper. The window is GTK4 and libadwaita.
 
@@ -38,10 +38,12 @@ wallhelper fetch [--wait]   pull the day's photo (what the systemd timer runs)
 wallhelper set <image>      make a photo in the collection the wallpaper
 wallhelper delete           send what's on screen to the Trash
 wallhelper info             what's on screen and where it came from
-wallhelper gui              the same thing with pictures
+wallhelper gui              the strip
 ```
 
-In the window: click a tile to set it as wallpaper, `D` deletes (UNDO on the message, `U` or `Ctrl+Z` brings it back out of the Trash for a few seconds), `O` opens the source page, `F` fetches now, `,` opens settings, `?` lists every shortcut, `G` shows the guide. `Ctrl+W` or `Ctrl+Q` closes the window and `Ctrl+?` lists the shortcuts, from the settings fields too; the letters are keys on their own, so `Ctrl+D` deletes nothing.
+In the strip: the arrows, `h` and `l`, or a click move along it and the wall follows. `D` or `Backspace` deletes (UNDO on the message, `U` or `Ctrl+Z`, brings it back out of the Trash for a few seconds), `O` opens the source page, and `Esc`, `Enter`, DONE, `Ctrl+W` or `Ctrl+Q` close it. `?` or `Ctrl+?` lists the keys. The photograph that was on the wall when you opened it says BEFORE once you move off it, and the morning's says TODAY. If this morning's photograph has not come, the strip goes and gets it; its place says why if that fails, and `Enter` or a click on it tries again.
+
+hyprland.lua (in the dotfiles) docks the window along the bottom edge and moves it to an empty workspace on the focused display, so the wallpaper above it is in full view, and takes you back to the workspace you came from when it closes.
 
 ## Sources
 
@@ -78,7 +80,7 @@ an array, and a string with no braces is used as-is.
 | `headers` | extra request headers |
 | `min_width` | skip anything narrower than this |
 | `min_aspect` | skip anything below this width ÷ height; `1.3` drops squares and portraits |
-| `key` | `{"get": url, "note": text, "into": placeholder}` — see below |
+| `key` | `{"into": placeholder}`: what to replace with your key, see below |
 
 Filters in a template: `|name` (after the last `/` or `:`), `|stem` (without
 the extension), `|text` (strip HTML, for credits that come wrapped in tags).
@@ -89,9 +91,9 @@ One name list decides what the morning fetches:
 "autofetch": ["bing"]
 ```
 
-Only `bing` is shipped. A source you add to the file is listed in the settings panel under MORNING, off until you click it. The panel also has a **CHECK** button that asks every source what it has today without downloading it, and an **EDIT** button that opens `config.json` in your text editor. Under MORNING it says when the morning fetch last ran and what it came to (`Last fetch 2026·10·18: bing`, or `failed: bing — Unauthorized`), so a source that broke while nobody was looking says so the next time you open it. `F` in the window runs the same fetch and toasts the same answer.
+Only `bing` is shipped. A source of your own goes in `config.json` with its name in `autofetch`, and the morning tries the list in order until one gives a photograph. To stop the morning fetch, `systemctl --user disable --now wallhelper-fetch.timer`, or set `autofetch` to `[]`.
 
-A source needing an API key declares where to get one, and the panel then offers the signup link and a box to paste into; the key goes wherever the placeholder appears, whether that is a query argument or a header. Until then the source is not asked, so a placeholder is never sent to the API.
+A source needing an API key carries a placeholder in its URL or headers, named by `key`'s `into`. Until you replace it with your key, the source is not asked, so a placeholder is never sent to the API.
 
 Your changes live in `~/.config/wallhelper/config.json`, and only your changes —
 the shipped sources stay shipped, so they keep improving.
@@ -104,8 +106,9 @@ the shipped sources stay shipped, so they keep improving.
 - `.credits` is tab-separated filename/title/byline/url. A dotfile, so an image
   browser pointed at the folder skips it.
 - `~/.local/state/wallhelper/last-fetch.json` is what the last morning fetch
-  came to: when, which source, and its reason if it failed. The settings panel
-  reads it. It is rewritten each run and is not a log; the journal is the log.
+  came to: when, which source, and its reason if it failed. The strip reads it
+  to know whether to fetch when it opens. It is rewritten each run and is not
+  a log; the journal is the log.
   A second run the same day asks nobody when that note says today's photograph
   is still in the collection, and a photograph the source serves a second time
   (Bing before it rolls over) counts as fetched.
@@ -133,6 +136,5 @@ Modules: `paths` (every path, importing nothing), `config` (the shipped sources
 and your deltas), `net`, `desktop` (notifications, hyprctl, hyprpaper),
 `library` (the collection on disk), `sources` (the template engine),
 `morning` (the daily fetch and the note it leaves), `cli`, and
-`gui/` (`style`, `thumbs`, `grid`, `plate`, `sheets`, `settings`,
-`window`, `app`). Importing `wallhelper.gui` is what pulls in GTK, which is why
+`gui/` (`style`, `thumbs`, `strip`, `plate`, `sheets`, `window`, `app`). Importing `wallhelper.gui` is what pulls in GTK, which is why
 the CLI does it inside the `gui` subcommand and nowhere else.

@@ -13,8 +13,8 @@ Context of use is unusual and shapes everything below: **almost all of the time
 nobody is using this at all.** A systemd timer fetches a photograph while the
 machine is asleep or the user is elsewhere, and the result is seen as a
 wallpaper, glanced at between windows, for a day. The window is opened rarely —
-when you want a different wallpaper from another source, or to tidy the
-collection. Sessions are seconds long, weeks apart.
+when you want a different wallpaper, or to tidy the collection. Sessions are
+seconds long, weeks apart.
 
 So the tool cannot rely on being remembered. Every time the window opens it has
 to re-explain its own state, and the state has to be small enough to re-explain
@@ -22,7 +22,7 @@ in one glance.
 
 ## Product Purpose
 
-wallhelper fetches Bing's picture of the day, sets it as the wallpaper, and keeps it. The window is a gallery of everything kept.
+wallhelper fetches Bing's picture of the day, sets it as the wallpaper, and keeps it. Opening it shows the desktop with a strip of everything kept along its bottom edge, and the desktop is the preview.
 
 It succeeds `hypr-wallpaper`, which rotated a folder on a timer. That tool's
 failure was that nothing ever meant anything: the wallpaper changed on its own
@@ -55,31 +55,19 @@ feeling of a good print you walk past every day and still notice.
 - **Consumer photo app / social feed:** no hearts, no counts, no streaks, no
   infinite scroll, and above all no "like". Saving is a filing decision, not a
   sentiment you broadcast.
-- **A GNOME preferences page:** a header bar, a sidebar of categories, and a
-  wall of switch rows. Settings here is one question deep and lives in the
-  same typographic language as the plate. If it ever needs a category, the
-  answer is that it has grown something it shouldn't have.
+- **A preferences page of any kind:** a header bar, a sidebar of categories, a wall of switch rows. wallhelper has no settings: the defaults are the product, and the rare change (a source of your own, no morning fetch) is a file or a timer, in the README. The settings panel was a JSON editor once and a wall of fields once; the third answer was to need none (#24).
 
 ## Design Principles
 
-1. **Open on the collection.** The window is a grid of what you saved. The
-   wallpaper is already on the desktop; this window is for choosing another
-   one or tidying up.
+1. **Open on the desktop.** The window is a strip along the bottom edge of an empty workspace, and the wallpaper above it is the preview: moving the selection sets the wall, and closing keeps it. There is no SET, because what you see is what you get.
 
 2. **Everything fetched is kept.** The morning photograph lands in the
    collection and stays. The only removal is the one you ask for. There is no
    keep/unkeep, no countdown, and no automatic sweep.
 
-3. **The window answers questions; the file holds settings.** The window's job
-   is the question you actually opened it to ask — which sources am I using,
-   and are they working. Everything else about a source is JSON, because a file
-   is better at being a file than a form is: it can hold a parameter this
-   version has never heard of. Twice this panel has been the other thing — a
-   raw JSON editor, and a wall of fields — and both were the same mistake, one
-   putting the file's vocabulary in the window and the other putting the
-   window's vocabulary in the file.
+3. **Nothing to configure, nothing to learn.** There is no settings panel and no guide, because the strip says what they did where you already look: the morning's place says whether today's photograph came and why not, TODAY and BEFORE mark the two tiles that matter, and every delete offers Undo. A source of your own is JSON, because a file is better at being a file than a form is: it can hold a parameter this version has never heard of.
 
-4. **Words, not icons.** DELETE, OPEN SOURCE, CHECK. A word answers
+4. **Words, not icons.** DELETE, DONE, and the source's name as its link. A word answers
    "what does this do" where a glyph asks it, and this is a tool used seconds
    at a time, weeks apart, by someone who will not have memorised anything.
    The type is the interface: a caption face for the title, tracked mono for
@@ -88,28 +76,22 @@ feeling of a good print you walk past every day and still notice.
 
 5. **Never state a fact you don't have.** No "Untitled", no "Unknown
    photographer", no invented date. A line with nothing to say is not shown and
-   the plate shrinks to suit. The corollary: when something fails, say which
+   the caption shrinks to suit. The corollary: when something fails, say which
    source and what it said — `bing — Unauthorized`, not "couldn't fetch".
 
 6. **Silence is the normal state.** This runs unattended every day. It must not
    notify on a flaky-wifi failure, because a notification you see weekly is one
    you learn to dismiss unread. It escalates only when there is nothing left to
    show, and otherwise fails loudly where a failure belongs — a non-zero exit
-   the timer records, and a source that says so in the panel next time you look.
+   the timer records, and a source that says so in the strip's first place the next time you open it.
 
 ## Accessibility & Inclusion
 
 A personal single-user tool, so no external WCAG mandate, but the baseline
 holds and some of it is load-bearing here:
 
-- **Contrast over an arbitrary photograph** is the hard problem, since plate
-  text can sit over a thumbnail. The plate is a scrim reaching 0.97 opacity
-  under the text rather than a translucent tint.
-- **Keyboard-complete.** Every action has a key, `?` lists them, and opening
-  settings moves focus into the panel rather than leaving it out on the grid.
-  Nothing requires the pointer.
-- **State is never colour alone.** The plate says what is selected. The current
-  tile also carries an accent rule, which is a second channel rather than the
-  only one.
+- **Contrast over an arbitrary photograph** is the hard problem, since the strip sits on the wallpaper. It is a mat, solid under the caption, rather than a translucent tint.
+- **Keyboard-complete.** Every action has a key, `?` lists them, and the arrows start from the selection. The buttons take no focus, so the arrows always belong to the strip. Nothing requires the pointer.
+- **State is never colour alone.** The caption says what is selected, and the selected tile also carries the accent rule, a second channel rather than the only one. TODAY and BEFORE are words.
 - Dark by default, because it is over a photograph and at the same hue as the
   rest of the desktop. There is no light variant and no reason for one.
