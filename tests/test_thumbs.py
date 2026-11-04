@@ -6,6 +6,7 @@ readers are the same ones the strip uses, no window attached.
 """
 
 import struct
+import threading
 import unittest
 import zlib
 
@@ -55,3 +56,29 @@ class Dimensions(unittest.TestCase):
         path = DIR / "notes.txt"
         path.write_bytes(b"nope")
         self.assertEqual(thumbs.dimensions(path), "")
+
+
+class Unreadable(unittest.TestCase):
+    def test_a_corrupt_photograph_has_no_thumbnail(self):
+        DIR.mkdir(parents=True, exist_ok=True)
+        path = DIR / "corrupt.jpg"
+        path.write_bytes(b"\xff\xd8 this was a photograph once")
+        self.addCleanup(path.unlink)
+        self.assertIsNone(thumbs.thumbnail(path))
+
+
+class PoolOrder(unittest.TestCase):
+    def test_jobs_run_oldest_first_and_survive_a_failure(self):
+        pool = thumbs.Pool(size=1)
+        ran = []
+        finished = threading.Event()
+
+        def explode():
+            raise ValueError("boom")
+
+        pool.submit(ran.append, "newest")
+        pool.submit(explode)
+        pool.submit(ran.append, "older")
+        pool.submit(finished.set)
+        self.assertTrue(finished.wait(5))
+        self.assertEqual(ran, ["newest", "older"])

@@ -69,78 +69,6 @@ class Named(unittest.TestCase):
         self.assertEqual(cfg.autofetch_sources(), ["bing"])
 
 
-class Morning(unittest.TestCase):
-    """Which sources the settings panel lists under MORNING."""
-
-    def setUp(self):
-        CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG.unlink(missing_ok=True)
-        self.addCleanup(CONFIG.unlink, missing_ok=True)
-
-    def test_a_fresh_config_lists_bing_alone(self):
-        self.assertEqual(cfg.morning_sources(cfg.config()), ["bing"])
-
-    def test_switching_bing_off_keeps_its_row(self):
-        # One click on bing used to empty `autofetch`, and a list of only
-        # its members lost the row that switches it back on. The panel
-        # re-reads the file after every click, so this does too.
-        full = cfg.config()
-        self.assertFalse(cfg.toggle_source(full, "bing"))
-        cfg.save_config(full)
-
-        again = cfg.config()
-        self.assertEqual(again["autofetch"], [])
-        self.assertEqual(cfg.morning_sources(again), ["bing"])
-
-    def test_a_second_click_switches_bing_back_on(self):
-        full = cfg.config()
-        cfg.toggle_source(full, "bing")
-        cfg.save_config(full)
-
-        full = cfg.config()
-        self.assertTrue(cfg.toggle_source(full, "bing"))
-        cfg.save_config(full)
-        self.assertEqual(cfg.autofetch_sources(), ["bing"])
-
-    def test_a_source_of_your_own_is_listed_after_bing(self):
-        CONFIG.write_text(json.dumps({
-            "autofetch": ["bing", "mine"],
-            "mine": {"image": "{u}"},
-        }))
-        self.assertEqual(cfg.morning_sources(cfg.config()), ["bing", "mine"])
-
-    def test_one_switched_off_is_still_listed(self):
-        CONFIG.write_text(json.dumps({"mine": {"image": "{u}"}}))
-        self.assertEqual(cfg.morning_sources(cfg.config()), ["bing", "mine"])
-        self.assertEqual(cfg.autofetch_sources(), ["bing"])
-
-    def test_a_name_with_no_source_behind_it_is_skipped(self):
-        CONFIG.write_text(json.dumps({"autofetch": ["bing", "ghost"]}))
-        self.assertEqual(cfg.morning_sources(cfg.config()), ["bing"])
-
-    def test_a_gallery_list_left_from_before_23_lists_nothing(self):
-        CONFIG.write_text(json.dumps({"gallery": ["apod", "wikipedia"]}))
-        self.assertEqual(cfg.morning_sources(cfg.config()), ["bing"])
-
-
-class Edit(unittest.TestCase):
-    def setUp(self):
-        CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG.unlink(missing_ok=True)
-        self.addCleanup(CONFIG.unlink, missing_ok=True)
-
-    def test_a_missing_file_is_made_empty_and_valid(self):
-        cfg.ensure_config()
-        self.assertEqual(json.loads(CONFIG.read_text()), {})
-        self.assertEqual(cfg.config()["autofetch"], cfg.DEFAULTS["autofetch"])
-
-    def test_the_file_you_wrote_is_left_exactly_as_it_was(self):
-        text = '{ "autofetch": [],\n  "mine": {"image": "{u}"} }\n'
-        CONFIG.write_text(text)
-        cfg.ensure_config()
-        self.assertEqual(CONFIG.read_text(), text)
-
-
 class Migrate(unittest.TestCase):
     def setUp(self):
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
@@ -188,12 +116,3 @@ class Keys(unittest.TestCase):
 
     def test_a_ready_source_needs_nothing(self):
         self.assertEqual(cfg.needs_setup(cfg.DEFAULTS["bing"]), "")
-
-    def test_applying_a_key_clears_the_placeholder(self):
-        spec = cfg.apply_key(KEYED, "PASTE_YOUR_ACCESS_KEY", "abc123")
-        self.assertIn("client_id=abc123", spec["url"])
-        self.assertEqual(cfg.needs_setup(spec), "")
-
-    def test_applying_a_key_does_not_mutate_the_source(self):
-        cfg.apply_key(KEYED, "PASTE_YOUR_ACCESS_KEY", "x")
-        self.assertIn("PASTE_YOUR_ACCESS_KEY", KEYED["url"])

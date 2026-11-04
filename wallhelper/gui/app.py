@@ -10,9 +10,9 @@ from gi.repository import Adw, Gio  # noqa: E402
 from .window import Window  # noqa: E402
 
 # The chords every window answers: action, accelerator. GTK runs
-# application accelerators in the capture phase, before a focused text
-# field or the window's own key handler sees the key, so these work from
-# the settings fields too. window.close is GTK's own; Ctrl+W and Ctrl+Q
+# application accelerators in the capture phase, before the focused
+# widget or the window's own key handler sees the key. window.close is
+# GTK's own; Ctrl+W and Ctrl+Q
 # come to the same thing here, since nothing runs after the window -- the
 # morning fetch is a timer.
 ACCELS = (

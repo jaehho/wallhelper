@@ -21,12 +21,11 @@ CONFIG = Path(os.environ.get(
 THUMBS = Path(os.environ.get("XDG_CACHE_HOME",
                              Path.home() / ".cache")) / "wallhelper/thumbs"
 
-# Not in CONFIG: that file is edited by hand in the settings panel, and a
-# housekeeping flag sitting among the real settings is noise in a file whose
-# whole point is that you read it.
+# Not in CONFIG: that file is edited by hand, and a housekeeping note
+# sitting among the real settings is noise in a file whose whole point is
+# that you read it.
 STATE = Path(os.environ.get("XDG_STATE_HOME",
                             Path.home() / ".local/state")) / "wallhelper"
-GUIDE_SEEN = STATE / "guide-seen"
 # What the last morning fetch came to: one small file, rewritten each run.
 LAST_FETCH = STATE / "last-fetch.json"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}

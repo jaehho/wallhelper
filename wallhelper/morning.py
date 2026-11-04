@@ -1,10 +1,11 @@
-"""The morning fetch: what the timer runs and what F in the window runs.
+"""The morning fetch: what the timer runs, and the window when it opens
+on a morning that has none yet.
 
 It walks the morning sources until one gives a photograph, and says what
-came of it in an Outcome. The command prints that and the window toasts
-it. Either way it is also written to LAST_FETCH, because the run is
-usually unattended and the next look at the panel is where a broken
-source is supposed to say so.
+came of it in an Outcome. The command prints that, and the window shows
+it in the strip's first place. Either way it is also written to
+LAST_FETCH, which is how the window knows whether this morning's run
+kept a photograph.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ class Outcome(NamedTuple):
 
 
 def record(run: Outcome) -> Outcome:
-    """Leave the run where the panel will find it, and hand it back.
+    """Leave the run where the window will find it, and hand it back.
 
     Via a tempfile, like the config: a half-written note reads as no
     note. A state directory that cannot be written to is not a reason for
@@ -79,16 +80,6 @@ def last_run() -> Outcome | None:
         return None
     return Outcome(kind, source, message, DIR / photo if photo else None,
                    when)
-
-
-def headline(run: Outcome) -> str:
-    """The run in a line for the panel."""
-    day = run.when[:10].replace("-", "·")
-    if not run.ok:
-        return f"Last fetch {day} failed: {run.message}"
-    if run.kind == SAVED:
-        return f"Last fetch {day}: {run.source}"
-    return f"Last fetch {day}: {run.source}, nothing new"
 
 
 def todays(usable: list[str]) -> Outcome | None:

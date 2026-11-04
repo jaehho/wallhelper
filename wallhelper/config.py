@@ -46,14 +46,6 @@ DEFAULTS = {
 }
 
 
-# One line each, shown beside the switch in the window. A source you add
-# yourself falls back to its host name, so this is not a registry -- it is
-# just the sentence the shipped ones deserve.
-BLURBS = {
-    "bing": "One curated photograph a day, titled and located.",
-}
-
-
 # What wallhaven looked like when it shipped, so migrate() can tell a
 # stock body from one you rewrote before dropping the source entirely.
 _OLD_WALLHAVEN = {
@@ -134,15 +126,6 @@ def save_config(cfg: dict) -> None:
     tmp.replace(CONFIG)
 
 
-def ensure_config() -> None:
-    """Make sure there is a file to open. One that exists is never touched,
-    not even rewritten with the same text: it is the part of the
-    configuration that is only yours."""
-    CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(FileExistsError), CONFIG.open("x") as handle:
-        handle.write("{}\n")
-
-
 def _rewrite_lists(stored: dict) -> dict:
     """Old `sources` meant "enabled for fetch". Morning is bing-only now,
     and wallhaven is gone; a stock wallhaven body goes with it."""
@@ -189,63 +172,6 @@ def needs_setup(spec: dict) -> str:
     body = json.dumps({key: value for key, value in spec.items()
                        if key != "key"})
     return token if token in body else ""
-
-
-def apply_key(spec: dict, token: str, value: str) -> dict:
-    """The key goes wherever the placeholder went. Which parameter carries it
-    is the source's business -- a query argument for one API, a header for the
-    next -- so this replaces the token and asks no further questions."""
-    def walk(node):
-        if isinstance(node, str):
-            return node.replace(token, value)
-        if isinstance(node, list):
-            return [walk(item) for item in node]
-        if isinstance(node, dict):
-            return {key: walk(item) for key, item in node.items()}
-        return node
-
-    # Everywhere except the block that named the placeholder. Rewriting that
-    # too renames the token to the key itself, and needs_setup then finds the
-    # key in the url and reports the source as still unconfigured forever.
-    setup = spec.get("key")
-    out = walk({key: item for key, item in spec.items() if key != "key"})
-    if setup is not None:
-        out["key"] = setup
-    return out
-
-
-def morning_sources(cfg: dict) -> list[str]:
-    """The names listed under MORNING in the settings panel.
-
-    A source is listed by being defined, not by being switched on.
-    Switching bing off takes it out of `autofetch`, and a list of only
-    the members would then lose the row that switches it back on. So it
-    is `autofetch`, then the shipped morning sources, listed or not, then
-    any other source you defined.
-    """
-    def defined(name) -> bool:
-        return isinstance(name, str) and isinstance(cfg.get(name), dict)
-
-    names = [name for name in (cfg.get("autofetch") or []) if defined(name)]
-    names += [name for name in DEFAULTS["autofetch"]
-              if defined(name) and name not in names]
-    names += [name for name, spec in cfg.items()
-              if name not in names and isinstance(spec, dict)
-              and spec.get("image")]
-    return names
-
-
-def toggle_source(cfg: dict, name: str) -> bool:
-    """Flip `name` in cfg's `autofetch` and say whether it is on now. The
-    source's own settings are not touched."""
-    on = [item for item in (cfg.get("autofetch") or [])
-          if isinstance(item, str)]
-    if name in on:
-        on.remove(name)
-    else:
-        on.append(name)
-    cfg["autofetch"] = on
-    return name in on
 
 
 def _named(cfg: dict, key: str) -> list[str]:

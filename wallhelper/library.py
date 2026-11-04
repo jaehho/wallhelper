@@ -512,7 +512,7 @@ def delete_photo(path: Path) -> Deleted:
     """Take one photograph out of the collection and put its neighbour on
     the wall. ValueError and OSError as for trash().
 
-    The neighbour is the next one along the grid, so deleting a run walks
+    The neighbour is the next one along the strip, so deleting a run walks
     along it rather than throwing you back to the start every time.
     """
     title = label(path)["title"] or path.stem
