@@ -2,11 +2,7 @@
 
 Bing in the morning, and the ones you saved.
 
-Every morning it fetches Bing's picture of the day, sets it as the wallpaper,
-and keeps it. The window is a gallery of that collection. When you want a
-change by hand, Elsewhere shows today's pictures from the other sources —
-choosing one saves it and makes it the wallpaper. Photographs you delete go to
-Trash. There is no countdown and nothing to tidy up later.
+Every morning it fetches Bing's picture of the day, sets it as the wallpaper, and keeps it. The window is a gallery of that collection, and choosing one puts it back on the wall. Photographs you delete go to Trash. There is no countdown and nothing to tidy up later.
 
 Built for Hyprland and hyprpaper. The window is GTK4 and libadwaita.
 
@@ -45,7 +41,7 @@ wallhelper info             what's on screen and where it came from
 wallhelper gui              the same thing with pictures
 ```
 
-In the window: click a tile to set it as wallpaper, `D` deletes (UNDO on the message, `U` or `Ctrl+Z` brings it back out of the Trash for a few seconds), `E` expands Elsewhere, `O` opens the source page, `F` fetches now, `,` opens settings, `?` lists every shortcut, `G` shows the guide. `Ctrl+W` or `Ctrl+Q` closes the window and `Ctrl+?` lists the shortcuts, from the settings fields too; the letters are keys on their own, so `Ctrl+D` deletes nothing.
+In the window: click a tile to set it as wallpaper, `D` deletes (UNDO on the message, `U` or `Ctrl+Z` brings it back out of the Trash for a few seconds), `O` opens the source page, `F` fetches now, `,` opens settings, `?` lists every shortcut, `G` shows the guide. `Ctrl+W` or `Ctrl+Q` closes the window and `Ctrl+?` lists the shortcuts, from the settings fields too; the letters are keys on their own, so `Ctrl+D` deletes nothing.
 
 ## Sources
 
@@ -70,7 +66,7 @@ an array, and a string with no braces is used as-is.
 | field | |
 |---|---|
 | `url` | the JSON to fetch |
-| `list` | path to an array; every entry is a gallery candidate |
+| `list` | path to an array; the fetch picks one entry from it |
 | `image` | the photograph's URL — the only required field |
 | `title` | shown large on the label |
 | `credit` | photographer; `place (© name)` splits across both label lines |
@@ -87,38 +83,15 @@ an array, and a string with no braces is used as-is.
 Filters in a template: `|name` (after the last `/` or `:`), `|stem` (without
 the extension), `|text` (strip HTML, for credits that come wrapped in tags).
 
-Two name lists decide what a source is for:
+One name list decides what the morning fetches:
 
 ```json
-"autofetch": ["bing"],
-"gallery":   ["apod", "wikipedia", "unsplash"]
+"autofetch": ["bing"]
 ```
 
-`autofetch` is the morning timer. `gallery` is the Elsewhere row. Shipped:
-`bing` (morning), `apod`, `wikipedia`, `unsplash`. APOD reads NASA's WordPress
-`apod-basic` route (the old `api.nasa.gov/planetary` image fields are gone).
-Unsplash takes `count=12` so Elsewhere has a grid; it needs a free access key,
-and the settings panel has a box for it. Switch sources on in the settings
-panel, which also has a **CHECK** button that asks every source what it has
-today without downloading it, and an **EDIT** button that opens `config.json`
-in your text editor. Under MORNING it says when the morning fetch last ran and
-what it came to (`Last fetch 2026·10·18: bing`, or `failed: bing —
-Unauthorized`), so a source that broke while nobody was looking says so the
-next time you open it. `F` in the window runs the same fetch and toasts the
-same answer.
+Only `bing` is shipped. A source you add to the file is listed in the settings panel under MORNING, off until you click it. The panel also has a **CHECK** button that asks every source what it has today without downloading it, and an **EDIT** button that opens `config.json` in your text editor. Under MORNING it says when the morning fetch last ran and what it came to (`Last fetch 2026·10·18: bing`, or `failed: bing — Unauthorized`), so a source that broke while nobody was looking says so the next time you open it. `F` in the window runs the same fetch and toasts the same answer.
 
-A source needing an API key declares where to get one, and the panel then offers
-the signup link and a box to paste into; the key goes wherever the placeholder
-appears, whether that is a query argument or a header.
-
-Elsewhere asks every `gallery` source at once and paints each as it answers,
-waiting no more than eight seconds on any. A source that is down, slow, or
-still holding its key placeholder gets a muted line under the row in place of
-silence (`UNSPLASH — needs a key`, `APOD — timed out`, `DENIED —
-Unauthorized`), and a placeholder is never sent to the API.
-
-A tile the collection already holds says SAVED, and choosing it sets that
-photograph instead of fetching it again.
+A source needing an API key declares where to get one, and the panel then offers the signup link and a box to paste into; the key goes wherever the placeholder appears, whether that is a query argument or a header. Until then the source is not asked, so a placeholder is never sent to the API.
 
 Your changes live in `~/.config/wallhelper/config.json`, and only your changes —
 the shipped sources stay shipped, so they keep improving.
@@ -160,6 +133,6 @@ Modules: `paths` (every path, importing nothing), `config` (the shipped sources
 and your deltas), `net`, `desktop` (notifications, hyprctl, hyprpaper),
 `library` (the collection on disk), `sources` (the template engine),
 `morning` (the daily fetch and the note it leaves), `cli`, and
-`gui/` (`style`, `thumbs`, `grid`, `elsewhere`, `plate`, `sheets`, `settings`,
+`gui/` (`style`, `thumbs`, `grid`, `plate`, `sheets`, `settings`,
 `window`, `app`). Importing `wallhelper.gui` is what pulls in GTK, which is why
 the CLI does it inside the `gui` subcommand and nowhere else.
