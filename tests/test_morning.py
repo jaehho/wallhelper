@@ -63,7 +63,7 @@ class Morning(unittest.TestCase):
 
 
 class Guard(Morning):
-    def test_a_pick_from_elsewhere_dated_today_does_not_close_the_day(self):
+    def test_a_photo_saved_by_hand_today_does_not_close_the_day(self):
         (DIR / f"{day()}-wikipedia-Somewhere.png").write_bytes(png(4, 4))
         run = morning.fetch_morning()
         self.assertEqual(run.kind, SAVED)

@@ -20,16 +20,12 @@ GUIDE = (
     ("THE COLLECTION",
      "Everything fetched is kept. Choose one to set it again, or delete "
      "the ones you no longer want."),
-    ("ELSEWHERE",
-     "Today's pictures from the other sources. Choosing one saves it "
-     "and makes it the wallpaper."),
 )
 
 SHORTCUTS = (
     ("D", "", "Delete from the collection"),
     ("U", "Ctrl+Z", "Undo the delete, while its message is up"),
     ("O", "", "Open the source page"),
-    ("E", "", "Expand or collapse Elsewhere"),
     ("F", "", "Fetch the morning photo now"),
     (",", "", "Settings"),
     ("?", "Ctrl+?", "This list"),

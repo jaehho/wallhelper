@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import hashlib
 import math
 from pathlib import Path
 
 import gi
 
 from ..library import measure
-from ..net import fetch_url
 from ..paths import THUMBS
-from .style import GRID_H, GRID_W, THUMB_H, THUMB_W
+from .style import GRID_H, GRID_W
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GdkPixbuf, Gio, GLib  # noqa: E402
+from gi.repository import GdkPixbuf, GLib  # noqa: E402
 
 
 def _crop(buf, wide: int, high: int):
@@ -70,44 +68,6 @@ def thumbnail(path: Path, wide: int = GRID_W, high: int = GRID_H):
         tmp.replace(cached)
     except (OSError, GLib.Error):
         pass                     # a cold cache is slow, not broken
-    return buf
-
-
-def remote_thumbnail(url: str, wide: int = THUMB_W, high: int = THUMB_H):
-    """The same crop, for a photograph that is still only a URL."""
-    digest = hashlib.sha256(url.encode()).hexdigest()[:16]
-    cached = THUMBS / f"remote-{digest}-{wide}x{high}.png"
-    try:
-        return GdkPixbuf.Pixbuf.new_from_file(str(cached))
-    except (OSError, GLib.Error):
-        pass
-
-    try:
-        data = fetch_url(url, timeout=30)
-        stream = Gio.MemoryInputStream.new_from_data(data, None)
-        full = GdkPixbuf.Pixbuf.new_from_stream(stream, None)
-        src_w, src_h = full.get_width(), full.get_height()
-        if not src_w or not src_h:
-            return None
-        scale = max(wide / src_w, high / src_h)
-        stream = Gio.MemoryInputStream.new_from_data(data, None)
-        buf = GdkPixbuf.Pixbuf.new_from_stream_at_scale(
-            stream,
-            max(wide, math.ceil(src_w * scale)),
-            max(high, math.ceil(src_h * scale)),
-            True, None,
-        )
-        buf = _crop(buf, wide, high)
-    except (GLib.Error, OSError, TypeError, ValueError):
-        return None
-
-    try:
-        THUMBS.mkdir(parents=True, exist_ok=True)
-        tmp = cached.with_name(f".{cached.name}.new")
-        buf.savev(str(tmp), "png", [], [])
-        tmp.replace(cached)
-    except (OSError, GLib.Error):
-        pass
     return buf
 
 

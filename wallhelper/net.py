@@ -60,26 +60,14 @@ def ascii_url(url: str) -> str:
 
 
 def fetch_url(url: str, timeout: int = 30,
-              headers: dict | None = None,
-              limit: int | None = None) -> bytes:
-    """The reply body, or only its first `limit` bytes."""
+              headers: dict | None = None) -> bytes:
+    """The reply body."""
     sent = {"User-Agent": UA}
     if isinstance(headers, dict):
         sent.update({str(k): str(v) for k, v in headers.items()})
     req = urllib.request.Request(ascii_url(url), headers=sent)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read(limit)
-
-
-def fetch_head(url: str, limit: int, timeout: int) -> bytes:
-    """The first `limit` bytes of a file, which is where an image keeps its
-    size. Asks for just those, and stops reading at them either way.
-    FetchError, saying why, when they do not come."""
-    try:
-        return fetch_url(url, timeout=timeout, limit=limit,
-                         headers={"Range": f"bytes=0-{limit - 1}"})
-    except FAILURES as err:
-        raise FetchError(describe(err)) from err
+        return resp.read()
 
 
 def download(url: str, dest: Path) -> None:

@@ -24,13 +24,12 @@ from .paths import CONFIG
 # entries out of the array at `list`, then fills these templates from each:
 # {some.json.path} anywhere in a string, plus {date:%Y%m%d} from the clock.
 # Adding a source means adding one of these objects and naming it in
-# `autofetch` or `gallery` -- there is no code to change.
+# `autofetch` -- there is no code to change.
 #
-# `autofetch` is what the morning timer pulls (bing). `gallery` is what the
-# window offers when you want a different wallpaper by hand.
+# `autofetch` is what the morning timer pulls: bing, and nothing else is
+# shipped.
 DEFAULTS = {
     "autofetch": ["bing"],
-    "gallery": ["apod", "wikipedia", "unsplash"],
     "bing": {
         "url": "https://www.bing.com/HPImageArchive.aspx"
                "?format=js&idx=0&n=1&mkt=en-US",
@@ -44,53 +43,6 @@ DEFAULTS = {
         "link": "{copyrightlink}",
         "date": "{startdate}",
     },
-    "apod": {
-        # api.nasa.gov/planetary/apod lost its image fields in the 2026-09
-        # WordPress move; this route is the replacement and needs no key.
-        "url": "https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=8",
-        "list": ".",
-        "image": "{hdurl}",
-        "title": "{title}",
-        "credit": "{credit|text}",
-        "link": "{permalink}",
-        "require": {"media_type": "image"},
-        "date": "{date}",
-        "min_width": 1920,
-        # A square or a portrait would be cropped to a strip. 1.3 is a
-        # little under 4:3.
-        "min_aspect": 1.3,
-    },
-    "wikipedia": {
-        "url": "https://en.wikipedia.org/api/rest_v1/feed/featured"
-               "/{date:%Y/%m/%d}",
-        "image": "{image.thumbnail.source}",
-        "replace": ["/[0-9]+px-", "/3840px-"],
-        "id": "{image.title|name|stem}",
-        "credit": "{image.description.text} (\u00a9 {image.artist.text})",
-        "link": "{image.file_page}",
-        # Some days' picture is a page of a book: see apod.
-        "min_aspect": 1.3,
-    },
-    "unsplash": {
-        "url": "https://api.unsplash.com/photos/random"
-               "?orientation=landscape&count=12"
-               "&client_id=PASTE_YOUR_ACCESS_KEY",
-        "list": ".",
-        "image": "{urls.full}",
-        "id": "{id}",
-        "title": "{alt_description}",
-        "credit": "{user.name}",
-        "link": "{links.html}",
-        # A source that needs a key says where to get one and what the
-        # placeholder is called; the window then offers the link and a box to
-        # paste into, and puts the key everywhere the placeholder appears.
-        "key": {
-            "get": "https://unsplash.com/oauth/applications/new",
-            "note": "Register an application \u2014 free, instant, no review "
-                    "\u2014 then copy its Access Key.",
-            "into": "PASTE_YOUR_ACCESS_KEY",
-        },
-    },
 }
 
 
@@ -99,9 +51,6 @@ DEFAULTS = {
 # just the sentence the shipped ones deserve.
 BLURBS = {
     "bing": "One curated photograph a day, titled and located.",
-    "apod": "NASA's astronomy picture of the day.",
-    "wikipedia": "Wikipedia's picture of the day, fully credited.",
-    "unsplash": "Random landscape photographs. Needs a free access key.",
 }
 
 
@@ -138,15 +87,13 @@ def config() -> dict:
 
 
 def ordered(cfg: dict) -> dict:
-    """Reading order, not alphabetical order: the two name lists first, then
+    """Reading order, not alphabetical order: the name list first, then
     each source's own settings in the order they are used, then the rest of
     the shipped ones, then anything you added yourself."""
     out = {}
-    for key in ("autofetch", "gallery"):
-        if key in cfg:
-            out[key] = cfg[key]
-    for name in list(cfg.get("autofetch") or []) \
-            + list(cfg.get("gallery") or []) + list(DEFAULTS):
+    if "autofetch" in cfg:
+        out["autofetch"] = cfg["autofetch"]
+    for name in list(cfg.get("autofetch") or []) + list(DEFAULTS):
         if isinstance(name, str) and name in cfg and name not in out:
             out[name] = cfg[name]
     for key, value in cfg.items():
@@ -197,28 +144,17 @@ def ensure_config() -> None:
 
 
 def _rewrite_lists(stored: dict) -> dict:
-    """Old `sources` meant "enabled for fetch". Morning is bing-only now;
-    the rest of what you had on becomes the elsewhere gallery."""
+    """Old `sources` meant "enabled for fetch". Morning is bing-only now,
+    and wallhaven is gone; a stock wallhaven body goes with it."""
     if "sources" not in stored:
         return stored
     if stored.get("wallhaven") == _OLD_WALLHAVEN:
         stored.pop("wallhaven", None)
     old = [name for name in (stored.pop("sources") or [])
-           if isinstance(name, str) and name != "wallhaven"]
-    body = {key: value for key, value in stored.items()
-            if isinstance(value, dict) and value.get("image")}
-    auto = [name for name in old if name == "bing"] or (
-        ["bing"] if body.get("bing") else [])
-    gallery: list[str] = []
-    for name in list(DEFAULTS.get("gallery") or []) + old:
-        if name in auto or name in gallery or name == "wallhaven":
-            continue
-        if body.get(name) or (name in DEFAULTS and name != "bing"):
-            gallery.append(name)
-    if auto:
-        stored["autofetch"] = auto
-    if gallery:
-        stored["gallery"] = gallery
+           if isinstance(name, str)]
+    body = stored.get("bing")
+    if "bing" in old or (isinstance(body, dict) and body.get("image")):
+        stored["autofetch"] = ["bing"]
     return stored
 
 
@@ -278,40 +214,37 @@ def apply_key(spec: dict, token: str, value: str) -> dict:
     return out
 
 
-def settings_lists(cfg: dict) -> tuple[list[str], list[str]]:
-    """The names under MORNING and under ELSEWHERE in the settings panel.
+def morning_sources(cfg: dict) -> list[str]:
+    """The names listed under MORNING in the settings panel.
 
-    A source sits in a section by what it is, not by whether it is switched
-    on. Switching bing off takes it out of `autofetch`, and a section that
-    listed only its members would then move the row to ELSEWHERE, where
-    clicking it fills `gallery` and `autofetch` stays empty for good. So
-    MORNING is `autofetch` plus the shipped morning sources, listed or not;
-    ELSEWHERE is `gallery` plus anything else defined that could be used.
+    A source is listed by being defined, not by being switched on.
+    Switching bing off takes it out of `autofetch`, and a list of only
+    the members would then lose the row that switches it back on. So it
+    is `autofetch`, then the shipped morning sources, listed or not, then
+    any other source you defined.
     """
     def defined(name) -> bool:
         return isinstance(name, str) and isinstance(cfg.get(name), dict)
 
-    morning = [name for name in (cfg.get("autofetch") or [])
-               if defined(name)]
-    morning += [name for name in DEFAULTS["autofetch"]
-                if defined(name) and name not in morning]
-    elsewhere = [name for name in (cfg.get("gallery") or [])
-                 if defined(name)]
-    elsewhere += [name for name, spec in cfg.items()
-                  if name not in morning and name not in elsewhere
-                  and isinstance(spec, dict) and spec.get("image")]
-    return morning, elsewhere
+    names = [name for name in (cfg.get("autofetch") or []) if defined(name)]
+    names += [name for name in DEFAULTS["autofetch"]
+              if defined(name) and name not in names]
+    names += [name for name, spec in cfg.items()
+              if name not in names and isinstance(spec, dict)
+              and spec.get("image")]
+    return names
 
 
-def toggle_source(cfg: dict, name: str, which: str) -> bool:
-    """Flip `name` in cfg's `which` list ("autofetch" or "gallery") and say
-    whether it is on now. The source's own settings are not touched."""
-    on = [item for item in (cfg.get(which) or []) if isinstance(item, str)]
+def toggle_source(cfg: dict, name: str) -> bool:
+    """Flip `name` in cfg's `autofetch` and say whether it is on now. The
+    source's own settings are not touched."""
+    on = [item for item in (cfg.get("autofetch") or [])
+          if isinstance(item, str)]
     if name in on:
         on.remove(name)
     else:
         on.append(name)
-    cfg[which] = on
+    cfg["autofetch"] = on
     return name in on
 
 
@@ -324,7 +257,3 @@ def autofetch_sources() -> list[str]:
     """The morning list: names that actually describe a source."""
     return _named(config(), "autofetch")
 
-
-def gallery_sources() -> list[str]:
-    """The elsewhere list: names that actually describe a source."""
-    return _named(config(), "gallery")

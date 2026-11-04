@@ -22,9 +22,7 @@ in one glance.
 
 ## Product Purpose
 
-wallhelper fetches Bing's picture of the day, sets it as the wallpaper, and
-keeps it. The window is a gallery of everything kept, plus today's pictures
-from other sources when you want a change by hand.
+wallhelper fetches Bing's picture of the day, sets it as the wallpaper, and keeps it. The window is a gallery of everything kept.
 
 It succeeds `hypr-wallpaper`, which rotated a folder on a timer. That tool's
 failure was that nothing ever meant anything: the wallpaper changed on its own
@@ -53,8 +51,7 @@ feeling of a good print you walk past every day and still notice.
 
 - **Wallpaper managers (waypaper, variety, Wallpaper Engine):** a settings
   dialog of checkboxes and the premise that choosing wallpapers is the
-  activity. wallhelper is not a shop. The collection is what you already have;
-  Elsewhere is a short list of today's other offerings, not an infinite feed.
+  activity. wallhelper is not a shop. The collection is what you already have, and there is no feed of other offerings.
 - **Consumer photo app / social feed:** no hearts, no counts, no streaks, no
   infinite scroll, and above all no "like". Saving is a filing decision, not a
   sentiment you broadcast.
@@ -67,8 +64,7 @@ feeling of a good print you walk past every day and still notice.
 
 1. **Open on the collection.** The window is a grid of what you saved. The
    wallpaper is already on the desktop; this window is for choosing another
-   one or tidying up. Elsewhere sits above the grid as a short row of today's
-   other sources.
+   one or tidying up.
 
 2. **Everything fetched is kept.** The morning photograph lands in the
    collection and stays. The only removal is the one you ask for. There is no
@@ -83,7 +79,7 @@ feeling of a good print you walk past every day and still notice.
    putting the file's vocabulary in the window and the other putting the
    window's vocabulary in the file.
 
-4. **Words, not icons.** DELETE, OPEN SOURCE, MORE, CHECK. A word answers
+4. **Words, not icons.** DELETE, OPEN SOURCE, CHECK. A word answers
    "what does this do" where a glyph asks it, and this is a tool used seconds
    at a time, weeks apart, by someone who will not have memorised anything.
    The type is the interface: a caption face for the title, tracked mono for
@@ -93,7 +89,7 @@ feeling of a good print you walk past every day and still notice.
 5. **Never state a fact you don't have.** No "Untitled", no "Unknown
    photographer", no invented date. A line with nothing to say is not shown and
    the plate shrinks to suit. The corollary: when something fails, say which
-   source and what it said — `unsplash — Unauthorized`, not "couldn't fetch".
+   source and what it said — `bing — Unauthorized`, not "couldn't fetch".
 
 6. **Silence is the normal state.** This runs unattended every day. It must not
    notify on a flaky-wifi failure, because a notification you see weekly is one

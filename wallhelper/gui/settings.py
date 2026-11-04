@@ -12,9 +12,9 @@ from ..config import (
     apply_key,
     config,
     ensure_config,
+    morning_sources,
     needs_setup,
     save_config,
-    settings_lists,
     toggle_source,
 )
 from ..morning import headline, last_run
@@ -76,16 +76,10 @@ class SettingsPanel(Gtk.Revealer):
         self.last_fetch.add_css_class("footnote")
         column.append(self.last_fetch)
 
-        self.section(column, "ELSEWHERE")
-        self.gallery_list = Gtk.Box(
-            orientation=Gtk.Orientation.VERTICAL, spacing=0, margin_top=4)
-        column.append(self.gallery_list)
-
         note = Gtk.Label(
-            label="Morning is Bing's picture of the day. Elsewhere is for "
-                  "when you want a change by hand. Click a name to switch "
-                  "it on or off. Moving a source between the two lists is "
-                  "a config.json edit \u2014 the file is better at being a file.",
+            label="Morning is Bing's picture of the day. Click a name to "
+                  "switch it on or off. A source of your own is a "
+                  "config.json edit \u2014 the file is better at being a file.",
             xalign=0, wrap=True, max_width_chars=44, margin_top=16,
         )
         note.add_css_class("footnote")
@@ -160,32 +154,26 @@ class SettingsPanel(Gtk.Revealer):
         return row
 
     def fill_sources(self):
-        """MORNING lists the morning sources, on or off; ELSEWHERE the
-        gallery and anything else defined that you could switch on."""
-        for box in (self.auto_list, self.gallery_list):
-            while (child := box.get_first_child()):
-                box.remove(child)
+        """MORNING lists every source defined, on or off."""
+        while (child := self.auto_list.get_first_child()):
+            self.auto_list.remove(child)
 
         cfg = config()
-        morning, elsewhere = settings_lists(cfg)
         self.source_notes = {}
         self.source_rows = {}
         self.first_row = None
 
-        for name in morning:
+        for name in morning_sources(cfg):
             self._row(self.auto_list, name, cfg[name],
-                      name in (cfg.get("autofetch") or []), "autofetch")
-        for name in elsewhere:
-            self._row(self.gallery_list, name, cfg[name],
-                      name in (cfg.get("gallery") or []), "gallery")
+                      name in (cfg.get("autofetch") or []))
 
-    def _row(self, box, name, spec, on, which):
+    def _row(self, box, name, spec, on):
         row = Gtk.Button()
         row.add_css_class("source-row")
         row.set_cursor(self.pointer)
         row.set_tooltip_text(
             f"Stop using {name}" if on else f"Use {name}")
-        row.connect("clicked", self.on_toggle_source, name, which)
+        row.connect("clicked", self.on_toggle_source, name)
 
         line = Gtk.Box(spacing=13)
         # A word, not a dimmed row: opacity plus a chip is not a state,
@@ -272,13 +260,12 @@ class SettingsPanel(Gtk.Revealer):
             return
         cfg = config()
         cfg[name] = apply_key(cfg.get(name) or {}, token, value)
-        key = "autofetch" if name in settings_lists(cfg)[0] else "gallery"
-        on = [item for item in (cfg.get(key) or [])
+        on = [item for item in (cfg.get("autofetch") or [])
               if isinstance(item, str)]
         if name not in on:
             # Pasting a key is the same sentence as "use this one".
             on.append(name)
-            cfg[key] = on
+            cfg["autofetch"] = on
         try:
             save_config(cfg)
         except OSError as problem:
@@ -290,9 +277,9 @@ class SettingsPanel(Gtk.Revealer):
         self.set_status(f"{name} has its key and is switched on. "
                         f"Press CHECK to see what it has today.")
 
-    def on_toggle_source(self, _button, name, which):
+    def on_toggle_source(self, _button, name):
         cfg = config()
-        now_on = toggle_source(cfg, name, which)
+        now_on = toggle_source(cfg, name)
         try:
             save_config(cfg)
         except OSError as problem:
@@ -318,7 +305,7 @@ class SettingsPanel(Gtk.Revealer):
             self.set_status(f"No longer using {name}.")
 
     def on_edit(self, _button=None):
-        """The moves between lists are a file edit, so put the file in
+        """A source of your own is a file edit, so put the file in
         front of you rather than leaving you to find its path. The text
         editor, not the JSON handler: that is usually a browser."""
         try:
