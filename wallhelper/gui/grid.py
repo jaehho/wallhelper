@@ -41,6 +41,10 @@ class CollectionGrid(Gtk.Box):
             valign=Gtk.Align.START, max_children_per_line=8,
             min_children_per_line=2, row_spacing=12, column_spacing=12,
             homogeneous=True, selection_mode=Gtk.SelectionMode.NONE,
+            # The first row sits as far down as the gap between rows
+            # (12 spacing, the tile's 2px rule, the child's 3px), now
+            # that no Elsewhere row is above it (#23).
+            margin_top=17,
         )
         self.flow.add_css_class("grid-flow")
         scroller = Gtk.ScrolledWindow(
