@@ -1,4 +1,4 @@
-"""The window shell: the collection grid, the elsewhere row, and the plate.
+"""The window shell: the collection grid and the plate.
 
 There is no full-bleed hero here any more -- the wallpaper is already on
 the desktop, and this window opens on what you have saved. Issue #1's
@@ -24,7 +24,6 @@ from ..library import (
 from ..morning import FAILED, SAVED, TODAY, Outcome, fetch_morning
 from ..net import describe
 from ..paths import GUIDE_SEEN
-from .elsewhere import ElsewhereBar
 from .grid import CollectionGrid
 from .plate import Plate
 from .settings import SettingsPanel
@@ -79,10 +78,6 @@ class Window(Adw.ApplicationWindow):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.toasts.set_child(outer)
 
-        self.elsewhere = ElsewhereBar(
-            self.pointer, self.on_adopt, self.toast, self.on_set)
-        outer.append(self.elsewhere)
-
         self.grid = CollectionGrid(self.pointer, self.on_pick)
         outer.append(self.grid)
 
@@ -119,7 +114,6 @@ class Window(Adw.ApplicationWindow):
         self.connect("notify::is-active", lambda *_a: self.held.clear())
 
         self.refresh()
-        self.elsewhere.reload()
         # Off the main thread: it asks gio what the Trash holds.
         threading.Thread(target=prune, daemon=True).start()
         if not GUIDE_SEEN.exists():
@@ -202,7 +196,6 @@ class Window(Adw.ApplicationWindow):
         self.plate.refresh(self.current, size)
         self.url = self.plate.url
         self.grid.refresh(self.current)
-        self.elsewhere.refresh_marks()
 
     def push(self, image):
         """Serialised, latest-wins. Holding an arrow down otherwise queues
@@ -226,23 +219,6 @@ class Window(Adw.ApplicationWindow):
             return
         self.push(path)
         self.refresh(path)
-
-    def on_set(self, path):
-        """An Elsewhere tile the collection already holds: nothing to save,
-        so it is picked like any other photograph."""
-        self.on_pick(None, path)
-
-    def on_adopt(self, path, _cand):
-        try:
-            set_wallpaper(path, push=False)
-        except OSError:
-            self.toast("Saved, but the wallpaper did not take")
-            self.refresh()
-            return
-        self.push(path)
-        self.refresh(path)
-        self.toast("Saved and set")
-        self.elsewhere.reload()
 
     def on_source(self, _btn):
         if self.url:
@@ -336,10 +312,6 @@ class Window(Adw.ApplicationWindow):
                     or self.shortcuts_panel.get_reveal_child()
                     or self.guide_panel.get_reveal_child()):
                 self.close_overlays()
-            elif self.elsewhere.expanded:
-                # Esc closes one layer at a time: the expanded Elsewhere
-                # drawer is the innermost thing open.
-                self.elsewhere.toggle()
             else:
                 self.close()
             return True
@@ -364,7 +336,6 @@ class Window(Adw.ApplicationWindow):
             Gdk.KEY_comma: self.open_settings,
             Gdk.KEY_d: self.on_delete, Gdk.KEY_D: self.on_delete,
             Gdk.KEY_u: self.on_undo, Gdk.KEY_U: self.on_undo,
-            Gdk.KEY_e: self.elsewhere.toggle, Gdk.KEY_E: self.elsewhere.toggle,
             Gdk.KEY_o: self.on_source, Gdk.KEY_O: self.on_source,
             Gdk.KEY_f: self.on_fetch, Gdk.KEY_F: self.on_fetch,
         }

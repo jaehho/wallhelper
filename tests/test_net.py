@@ -14,12 +14,10 @@ from pathlib import Path
 
 from tests import guard
 from tests.test_sources import png
-from wallhelper import sources
 from wallhelper.net import (
     FetchError,
     ascii_url,
     download,
-    fetch_head,
     fetch_url,
 )
 from wallhelper.paths import DIR
@@ -119,27 +117,6 @@ class Download(unittest.TestCase):
             download("not a url", self.dest)
 
 
-class Head(unittest.TestCase):
-    BODY = bytes(range(256)) * 4
-
-    def test_only_the_first_bytes_are_asked_for_and_read(self):
-        # A server that ignores Range sends the lot; the read still stops.
-        with serving({"/f.png": (200, self.BODY)}) as (base, _a, ranges):
-            self.assertEqual(fetch_head(base + "/f.png", 16, 5),
-                             self.BODY[:16])
-        self.assertEqual(ranges, ["bytes=0-15"])
-
-    def test_a_file_that_is_not_there_is_a_reason(self):
-        with serving({}) as (base, _a, _r), \
-             self.assertRaisesRegex(FetchError, "Not Found"):
-            fetch_head(base + "/no.png", 16, 5)
-
-    def test_remote_size_reads_a_png_without_the_rest_of_it(self):
-        with serving({"/f.png": (200, png(2160, 3840))}) as (base, _a, _r):
-            self.assertEqual(sources.remote_size(base + "/f.png", 5),
-                             (2160, 3840))
-
-
 @contextlib.contextmanager
 def cutting_short():
     """A server whose chunked reply ends mid-chunk and hangs up."""
@@ -172,8 +149,3 @@ class CutShort(unittest.TestCase):
              self.assertRaisesRegex(FetchError, "cut short"):
             download(base + "/x.png", dest)
         self.assertFalse(dest.exists())
-
-    def test_the_same_holds_for_a_head(self):
-        with cutting_short() as base, \
-             self.assertRaisesRegex(FetchError, "cut short"):
-            fetch_head(base + "/x.png", 1000, 3)

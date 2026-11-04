@@ -73,6 +73,8 @@ _ORIG_PATH = "trash::orig-path="
 _GIO_TIMEOUT_S = 15
 # What gui.thumbs writes: '<photo>-<w>x<h>.png'.
 _CACHE_NAME = re.compile(r"(?P<photo>.+)-\d+x\d+\.png")
+# What the Elsewhere row cached until #23 removed it: a URL's digest.
+_REMOTE_CACHE_NAME = re.compile(r"remote-[0-9a-f]{16}-\d+x\d+\.png")
 
 
 # --- credits --------------------------------------------------------------
@@ -422,7 +424,8 @@ def restore(path: Path) -> None:
 def cache_owner(cached: str) -> str | None:
     """The photograph a cached thumbnail was cut from, from its filename
     ('<photo>-<w>x<h>.png', see gui.thumbs). None for the cache entries
-    that belong to no photograph: Elsewhere's remote-*, temp files."""
+    that belong to no photograph: a remote-* left by Elsewhere, temp
+    files."""
     match = _CACHE_NAME.fullmatch(cached)
     if match is None or cached.startswith("."):
         return None
@@ -469,7 +472,8 @@ def _prune_thumbnails(present: set[str], trashed: set[str]) -> None:
         return
     for path in cached:
         owner = cache_owner(path.name)
-        if owner and _is_gone(owner, present, trashed):
+        if (owner and _is_gone(owner, present, trashed)) or (
+                owner is None and _REMOTE_CACHE_NAME.fullmatch(path.name)):
             with contextlib.suppress(OSError):
                 path.unlink()
 
@@ -477,7 +481,8 @@ def _prune_thumbnails(present: set[str], trashed: set[str]) -> None:
 def prune() -> None:
     """Drop the ledger line and cached thumbnails of every photograph that
     is gone from the collection and from the wastebasket, so neither
-    outgrows the collection it describes.
+    outgrows the collection it describes. The thumbnails Elsewhere cached
+    (remote-*) go too: nothing shows them any more.
 
     A photograph in the Trash keeps both: one restored from there has its
     title and byline back, and its tile does not wait on a decode. Files

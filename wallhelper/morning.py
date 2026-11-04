@@ -95,8 +95,8 @@ def todays(usable: list[str]) -> Outcome | None:
     """The photograph the last run kept, when it is today's and still here.
 
     This is what stops a second run the same day from asking again, and it
-    is keyed on the run, not on what the folder happens to hold: an
-    Elsewhere pick dated today is not the morning's photograph. A photo
+    is keyed on the run, not on what the folder happens to hold: a
+    photograph saved by hand today is not the morning's. A photo
     named for an earlier day (Bing has not rolled over yet) is not today's
     either, and is left to the source to say it already has.
     """

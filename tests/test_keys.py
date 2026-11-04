@@ -1,6 +1,6 @@
 """The window's single-letter shortcuts stand down while Settings is up.
 
-A source row in Settings is a button, so a bare D, F, E, O or G reaches the
+A source row in Settings is a button, so a bare D, F, O or G reaches the
 window's key handler with focus inside the panel. Each of them acts on the
 window behind it: D deletes the wallpaper, F starts a fetch. No display is
 opened; on_key only reads panel state, so a stand-in for the window will do.
@@ -15,7 +15,6 @@ from unittest import mock
 
 from tests import guard
 from wallhelper.gui import app, window
-from wallhelper.gui.elsewhere import ElsewhereBar
 
 from gi.repository import Gdk, Gtk  # isort: skip -- after gui pins the version
 
@@ -39,7 +38,6 @@ def stand_in(settings=False, shortcuts=False, guide=False):
     spec = mock.create_autospec(window.Window, instance=True)
     for name in HANDLERS:
         setattr(win, name, getattr(spec, name))
-    win.elsewhere = mock.create_autospec(ElsewhereBar, instance=True)
     win.get_focus.return_value = None
     win.settings_panel.get_reveal_child.return_value = settings
     win.shortcuts_panel.get_reveal_child.return_value = shortcuts
@@ -58,14 +56,13 @@ def release(win, keyval, code=0):
 
 class SettingsOpen(unittest.TestCase):
     def test_letters_do_nothing_behind_the_panel(self):
-        for key in (Gdk.KEY_d, Gdk.KEY_u, Gdk.KEY_f, Gdk.KEY_e, Gdk.KEY_o,
+        for key in (Gdk.KEY_d, Gdk.KEY_u, Gdk.KEY_f, Gdk.KEY_o,
                     Gdk.KEY_g, Gdk.KEY_comma, Gdk.KEY_question):
             with self.subTest(key=Gdk.keyval_name(key)):
                 win = stand_in(settings=True)
                 self.assertFalse(press(win, key))
                 for name in HANDLERS:
                     getattr(win, name).assert_not_called()
-                win.elsewhere.toggle.assert_not_called()
 
     def test_escape_still_closes_it(self):
         win = stand_in(settings=True)
@@ -103,12 +100,10 @@ class EveryKey(unittest.TestCase):
                 self.assertTrue(press(win, key))
                 getattr(win, handler).assert_called_once()
 
-    def test_e_toggles_elsewhere(self):
+    def test_e_is_free_since_elsewhere_went(self):
         for key in (Gdk.KEY_e, Gdk.KEY_E):
             with self.subTest(key=Gdk.keyval_name(key)):
-                win = stand_in()
-                self.assertTrue(press(win, key))
-                win.elsewhere.toggle.assert_called_once()
+                self.assertFalse(press(stand_in(), key))
 
 
 class KeyRepeat(unittest.TestCase):
@@ -159,7 +154,7 @@ class Chords(unittest.TestCase):
     the window has no use for.
     """
 
-    LETTERS = (Gdk.KEY_d, Gdk.KEY_u, Gdk.KEY_f, Gdk.KEY_e, Gdk.KEY_o,
+    LETTERS = (Gdk.KEY_d, Gdk.KEY_u, Gdk.KEY_f, Gdk.KEY_o,
                Gdk.KEY_g, Gdk.KEY_comma, Gdk.KEY_question)
 
     def test_a_letter_with_ctrl_or_alt_does_nothing(self):
@@ -170,7 +165,6 @@ class Chords(unittest.TestCase):
                     self.assertFalse(press(win, key, state=held))
                     for name in HANDLERS:
                         getattr(win, name).assert_not_called()
-                    win.elsewhere.toggle.assert_not_called()
 
     def test_shift_and_caps_lock_leave_a_letter_a_letter(self):
         # ? is Shift+/, and Caps Lock turns d into D.
@@ -240,29 +234,18 @@ class CtrlZ(unittest.TestCase):
 class Escape(unittest.TestCase):
     """Esc closes one layer at a time, and the app is the last one."""
 
-    def press_escape(self, **revised):
-        win = stand_in()
-        for name, value in revised.items():
-            if name == "elsewhere_expanded":
-                win.elsewhere.expanded = value
-            else:
-                getattr(win, f"{name}_panel").get_reveal_child.return_value = \
-                    value
+    def press_escape(self, **shown):
+        win = stand_in(**shown)
         window.Window.on_key(win, None, Gdk.KEY_Escape, 0, 0)
         return win
 
-    def test_an_expanded_elsewhere_collapses_before_the_window_closes(self):
-        win = self.press_escape(elsewhere_expanded=True)
-        win.elsewhere.toggle.assert_called_once()
-        win.close.assert_not_called()
-
     def test_with_nothing_open_esc_closes_the_window(self):
-        win = self.press_escape(elsewhere_expanded=False)
-        win.elsewhere.toggle.assert_not_called()
+        win = self.press_escape()
         win.close.assert_called_once()
 
-    def test_a_panel_still_wins_over_an_expanded_elsewhere(self):
-        win = self.press_escape(elsewhere_expanded=True, settings=True)
-        win.close_overlays.assert_called_once()
-        win.elsewhere.toggle.assert_not_called()
-        win.close.assert_not_called()
+    def test_a_panel_closes_before_the_window(self):
+        for panel in ("settings", "shortcuts", "guide"):
+            with self.subTest(panel=panel):
+                win = self.press_escape(**{panel: True})
+                win.close_overlays.assert_called_once()
+                win.close.assert_not_called()

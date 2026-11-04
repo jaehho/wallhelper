@@ -268,9 +268,16 @@ class Prune(Setup):
             sorted(path.name for path in THUMBS.iterdir()),
             ["20260905-bing-a.png-312x176.png",
              "20260905-bing-a.png-96x54.png",
-             "20260906-bing-b.png-312x176.png",
-             remote.name])
+             "20260906-bing-b.png-312x176.png"])
         self.assertFalse(any(path.exists() for path in mine))
+        self.assertFalse(remote.exists())   # Elsewhere's, gone with it
+
+    def test_a_photograph_named_remote_keeps_its_thumbnail(self):
+        photograph("remote-0123456789abcdef.png")
+        kept = thumbnail_for("remote-0123456789abcdef.png")
+        photograph("20260905-bing-a.png")
+        library.prune()
+        self.assertTrue(kept.exists())
 
     def test_nothing_goes_when_the_trash_cannot_be_read(self):
         photograph("20260905-bing-a.png", title="A")

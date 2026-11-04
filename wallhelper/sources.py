@@ -10,35 +10,27 @@ from __future__ import annotations
 
 import contextlib
 import html
-import io
 import json
 import random
 import re
 import time
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 from pathlib import Path
 from typing import NamedTuple
 
 from .config import needs_setup
-from .library import measure, measure_stream, remember, slugify
+from .library import measure, remember, slugify
 from .net import (
     FAILURES,
     FetchError,
     describe,
     download,
-    fetch_head,
     fetch_url,
 )
 from .paths import DIR
 
 _REPLACE_PAIR_LEN = 2
 _YYYYMMDD_LEN = 8
-# Where a JPEG keeps its size is after the metadata in front of it, which
-# the photographs these sources serve do not stretch past a few dozen KB.
-_HEAD_BYTES = 256 * 1024
-_SIZING_THREADS = 8
 
 
 def dig(data, path: str):
@@ -144,8 +136,8 @@ def list_source(_name: str, spec: dict, timeout: int = 30) -> Listing:
     """Every usable entry from one source today. Nothing is downloaded.
 
     Each candidate is filled -- image, title, credit, link, date, ident --
-    after `require` and `replace` have been applied, so the gallery never
-    offers a thumb it could not later adopt. A source with nothing to offer
+    after `require` and `replace` have been applied, so a fetch never
+    picks one it could not then adopt. A source with nothing to offer
     says why in the complaint.
 
     A source still holding its key placeholder is not asked: the request
@@ -223,50 +215,10 @@ def refusal(spec: dict, size: tuple[int, int] | None) -> str:
     return ""
 
 
-def remote_size(url: str, timeout: int) -> tuple[int, int] | None:
-    """Width and height of the photograph at a URL, read from its first
-    bytes alone; None when those do not say. FetchError when they never
-    came."""
-    return measure_stream(io.BytesIO(fetch_head(url, _HEAD_BYTES, timeout)))
-
-
-def _refusal_at(spec: dict, url: str, timeout: int) -> str:
-    try:
-        return refusal(spec, remote_size(url, timeout))
-    except FetchError:
-        # Not knowing is not a reason: the tile and the click will say
-        # what is wrong with a URL that does not answer.
-        return ""
-
-
-def offer_source(name: str, spec: dict, timeout: int = 30) -> Listing:
-    """What the gallery shows from one source: list_source, less every
-    candidate that adopt would refuse for its size once downloaded.
-
-    Only the first bytes of each are fetched to find out, and only when the
-    source states a size it needs, so a source without one costs nothing
-    more than its listing.
-    """
-    listing = list_source(name, spec, timeout)
-    if not listing.candidates or not (
-            _floor(spec, "min_width") or _floor(spec, "min_aspect")):
-        return listing
-
-    with ThreadPoolExecutor(max_workers=_SIZING_THREADS) as pool:
-        refusals = list(pool.map(
-            partial(_refusal_at, spec, timeout=timeout),
-            [cand["image"] for cand in listing.candidates]))
-    fitting = [cand for cand, why in zip(listing.candidates, refusals,
-                                         strict=True) if not why]
-    if fitting:
-        return Listing(fitting, "")
-    return Listing([], f"nothing fits today ({refusals[0]})")
-
-
 def target(name: str, cand: dict) -> Path:
     """Where adopt keeps a candidate: {day}-{name}-{ident}{suffix} in the
     collection, with the day read back out of the candidate's own date.
-    The same candidate is always the same file, which is how the gallery
+    The same candidate is always the same file, which is how a fetch
     knows it already has one."""
     src = cand.get("image") or ""
     ident = cand.get("ident") or time.strftime("%H%M%S")

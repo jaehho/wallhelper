@@ -14,7 +14,6 @@ from pathlib import Path
 DISPLAY = '"Adwaita Sans", sans-serif'
 DATA = '"JetBrainsMono NF", "JetBrainsMono Nerd Font", monospace'
 
-THUMB_W, THUMB_H = 112, 63       # 16:9, elsewhere row
 GRID_W, GRID_H = 220, 124        # 16:9, collection tiles
 LONG_TOAST_SECONDS = 7           # a toast with something to read in it
 
@@ -124,29 +123,6 @@ def stylesheet(colors: dict[str, str]) -> str:
     .thumb {{
         border-radius: 2px;
         box-shadow: inset 0 0 0 1px alpha({colors['fg']}, 0.14);
-    }}
-
-    .elsewhere-row {{
-        padding: 10px 18px 6px 18px;
-    }}
-    .elsewhere-label {{
-        font-family: {DATA}; font-size: 10px; font-weight: 600;
-        letter-spacing: 1.5px; color: {colors['grey2']};
-    }}
-
-    /* On a tile already in the collection. A word, not a colour. */
-    .thumb-mark {{
-        font-family: {DATA}; font-size: 9px; font-weight: 600;
-        letter-spacing: 1.2px; color: {colors['fg']};
-        background: alpha({colors['bg_dim']}, 0.8);
-        padding: 1px 5px; margin: 0 0 4px 4px; border-radius: 2px;
-    }}
-
-    /* A source with nothing to show, and why: quieter than the label it
-       sits under, and not coloured like an alarm. */
-    .elsewhere-note {{
-        font-family: {DATA}; font-size: 10px; font-weight: 400;
-        letter-spacing: 1.2px; color: {colors['grey2']};
     }}
 
     .close-btn {{
