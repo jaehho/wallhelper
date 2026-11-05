@@ -30,7 +30,7 @@ FAILURES = (urllib.error.URLError, OSError, TimeoutError, ValueError,
 
 class FetchError(Exception):
     """Nothing usable came back. str() is why, in one line a toast or a
-    panel can show: what the other end said, or what was wrong with it."""
+    window can show: what the other end said, or what was wrong with it."""
 
 
 def describe(problem: Exception) -> str:

@@ -1,8 +1,11 @@
-"""Turning a photograph into something the grid can show."""
+"""Turning a photograph into something the strip can show."""
 
 from __future__ import annotations
 
 import math
+import queue
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import gi
@@ -13,6 +16,40 @@ from .style import GRID_H, GRID_W
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import GdkPixbuf, GLib  # noqa: E402
+
+POOL_THREADS = 4
+
+
+class Pool:
+    """A few threads working through a queue, oldest job first.
+
+    Not a ThreadPoolExecutor: at exit that finishes everything queued,
+    so closing the window on 3000 cold thumbnails would leave the
+    process decoding for minutes. Daemon threads stop with it. (#18)
+    """
+
+    def __init__(self, size: int = POOL_THREADS):
+        self.size = size
+        self.jobs: queue.SimpleQueue = queue.SimpleQueue()
+        self.started = False
+
+    def submit(self, job: Callable, *args) -> None:
+        if not self.started:
+            self.started = True
+            for _ in range(self.size):
+                threading.Thread(target=self._work, daemon=True).start()
+        self.jobs.put((job, args))
+
+    def _work(self) -> None:
+        while True:
+            job, args = self.jobs.get()
+            try:
+                job(*args)
+            except Exception:    # one bad tile must not cost a thread
+                continue
+
+
+LOCAL_POOL = Pool()
 
 
 def _crop(buf, wide: int, high: int):

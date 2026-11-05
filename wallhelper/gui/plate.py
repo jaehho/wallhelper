@@ -1,8 +1,9 @@
-"""The caption for whatever is selected: a wall label, not a form.
+"""The caption over the strip: a wall label, not a form.
 
-Title first, then where it was taken, then an accession line. Actions are
-DELETE and OPEN SOURCE. Setting a photograph is choosing it in the grid;
-there is no second signal on this bar.
+Title first, then where it was taken and the accession line. The only
+words to press are DELETE and DONE; the source's name is the link to its
+page. Setting a photograph is moving to it in the strip, so nothing here
+says SET.
 """
 
 from __future__ import annotations
@@ -18,124 +19,105 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Pango  # noqa: E402
 
 
+def facts_line(info: dict[str, str], size: str) -> tuple[str, str, str]:
+    """The place, the dimensions and the photographer, each tracked, any
+    of them empty. A photograph nobody described says nothing rather
+    than a placeholder."""
+    author = info.get("author", "")
+    return (tracked(info.get("place", "")), size,
+            tracked(f"\u00a9 {author}") if author else "")
+
+
 class Plate(Gtk.Box):
-    def __init__(self, pointer, on_delete, on_source, chrome=None):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    def __init__(self, pointer, on_delete, on_source, on_done):
+        super().__init__(spacing=0)
         self.add_css_class("plate")
         self.pointer = pointer
-        self.on_delete = on_delete
-        self.on_source = on_source
-        # App chrome rides on the plate's action row: the scrim that used
-        # to hold it cost a hero-sized band for three words.
-        self.chrome = chrome or {}
         self.url = ""
-        self.build()
 
-    def build(self):
-        self.title = Gtk.Label(
-            xalign=0, ellipsize=Pango.EllipsizeMode.END,
-            single_line_mode=True,
-        )
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0,
+                        hexpand=True, valign=Gtk.Align.CENTER)
+        self.append(words)
+
+        self.title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END,
+                               single_line_mode=True)
         self.title.add_css_class("plate-title")
-        self.append(self.title)
+        words.append(self.title)
 
-        self.place = Gtk.Label(
-            xalign=0, ellipsize=Pango.EllipsizeMode.END,
-            single_line_mode=True, margin_top=9,
-        )
-        self.place.add_css_class("plate-place")
-        self.append(self.place)
-
-        row = Gtk.Box(spacing=0, margin_top=12)
-        self.append(row)
-
-        facts = Gtk.Box(spacing=0, hexpand=True)
-        row.append(facts)
-
-        self.size = Gtk.Label(xalign=0)
-        self.size.add_css_class("plate-row")
-        facts.append(self.size)
-
-        self.source = Gtk.Button(
-            label="", tooltip_text="Open the source page")
+        row = Gtk.Box(spacing=18, margin_top=6)
+        words.append(row)
+        # Only the last fact gives way. A label that may shorten is
+        # measured a letter short with the tracking on, so place and size,
+        # which are short, never shorten.
+        self.place = self._fact(row, "plate-place", expand=False)
+        self.size = self._fact(row, "plate-row", expand=False)
+        self.source = Gtk.Button(label="",
+                                 tooltip_text="Open the source page  (O)")
         self.source.add_css_class("plate-action")
         self.source.add_css_class("plate-link")
-        self.source.connect("clicked", self.on_source)
-        self.source.set_cursor(self.pointer)
-        facts.append(self.source)
+        self._quiet(self.source, on_source)
+        row.append(self.source)
+        self.author = self._fact(row, "plate-row", expand=True)
 
-        self.author = Gtk.Label(
-            xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END,
-            single_line_mode=True,
-        )
-        self.author.add_css_class("plate-row")
-        facts.append(self.author)
-
+        actions = Gtk.Box(spacing=26, valign=Gtk.Align.END)
+        self.append(actions)
         self.delete_btn = Gtk.Button(
-            label="DELETE", margin_start=24,
-            tooltip_text="Move this photograph to the Trash  (D)",
-        )
+            label="DELETE", tooltip_text="Move it to the Trash  (D)")
         self.delete_btn.add_css_class("plate-action")
         self.delete_btn.add_css_class("danger")
-        self.delete_btn.connect("clicked", self.on_delete)
-        self.delete_btn.set_cursor(self.pointer)
-        row.append(self.delete_btn)
+        self._quiet(self.delete_btn, on_delete)
+        actions.append(self.delete_btn)
+        done = Gtk.Button(label="DONE",
+                          tooltip_text="Keep this one and close  (Esc)")
+        done.add_css_class("plate-action")
+        self._quiet(done, on_done)
+        actions.append(done)
 
-        for text, tip, key in (
-            ("SETTINGS", "Sources and housekeeping  (,)", "settings"),
-            ("?", "Keyboard shortcuts  (?)", "shortcuts"),
-        ):
-            button = Gtk.Button(label=text, tooltip_text=tip,
-                                margin_start=24, valign=Gtk.Align.CENTER)
-            button.add_css_class("plate-action")
-            if self.chrome.get(key):
-                button.connect("clicked", self.chrome[key])
-            button.set_cursor(self.pointer)
-            row.append(button)
+    def _fact(self, row, css, *, expand):
+        fact = Gtk.Label(xalign=0, single_line_mode=True, hexpand=expand)
+        if expand:
+            fact.set_ellipsize(Pango.EllipsizeMode.END)
+        fact.add_css_class(css)
+        row.append(fact)
+        return fact
 
-        if self.chrome.get("close"):
-            close = Gtk.Button(
-                icon_name="window-close-symbolic",
-                tooltip_text="Close  (Esc)", margin_start=18,
-                valign=Gtk.Align.CENTER,
-            )
-            close.add_css_class("circular")
-            close.add_css_class("close-btn")
-            close.connect("clicked", self.chrome["close"])
-            row.append(close)
+    def _quiet(self, button, handler):
+        """A button the pointer presses and focus never lands on, so the
+        arrows always belong to the strip. Every one has a key."""
+        button.set_focusable(False)
+        button.set_focus_on_click(False)
+        button.set_cursor(self.pointer)
+        button.connect("clicked", lambda _b: handler())
 
     def refresh(self, path: Path | None, size: str = ""):
-        """No title line rather than a placeholder one. A photograph
-        nobody titled has nothing to say here, and the plate shrinks."""
+        """A title line only when there is a title: a photograph nobody
+        titled shows its place or its file name instead."""
         info = label(path) if path else {}
-
         title = info.get("title", "")
-        if path is None:
-            title = "No photograph selected"
-        self.title.set_text(title)
-        self.title.set_visible(bool(title))
-
         src, url = info.get("source", ""), info.get("url", "")
-        named = bool(src and url)
-
-        place = info.get("place", "")
-        if path is not None and not (place or title or named):
-            place = Path(info.get("file") or path).stem
-        self.place.set_text(tracked(place))
-        self.place.set_visible(bool(place))
-        self.place.set_margin_top(9 if title else 0)
-
-        self.size.set_text(size)
-        self.size.set_visible(bool(size))
-
+        place, size, author = facts_line(info, size)
+        if path is not None and not (title or place):
+            title = Path(info.get("file") or path).stem
+        self._set(self.title, title)
+        self._set(self.place, place)
+        self._set(self.size, size)
+        self._set(self.author, author)
         self.source.set_label(tracked(src))
-        self.source.set_visible(named)
-        self.source.set_margin_start(18 if size else 0)
+        self.source.set_visible(bool(src and url))
         self.url = url
-
-        author = info.get("author", "")
-        self.author.set_text(tracked(f"© {author}") if author else "")
-        self.author.set_visible(bool(author))
-        self.author.set_margin_start(18 if (size or named) else 0)
-
         self.delete_btn.set_sensitive(path is not None)
+
+    def say(self, title: str, line: str):
+        """The morning's place is selected: what came of the fetch."""
+        self._set(self.title, title)
+        self._set(self.place, tracked(line))
+        for fact in (self.size, self.author):
+            self._set(fact, "")
+        self.source.set_visible(False)
+        self.url = ""
+        self.delete_btn.set_sensitive(False)
+
+    @staticmethod
+    def _set(widget, text):
+        widget.set_text(text)
+        widget.set_visible(bool(text))

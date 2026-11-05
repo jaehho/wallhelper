@@ -17,7 +17,7 @@ from unittest import mock
 from tests import guard
 from tests.test_library import png
 from wallhelper import library
-from wallhelper.gui import window
+from wallhelper.gui import strip, window
 from wallhelper.paths import CREDITS, CURRENT, DIR, THUMBS
 
 
@@ -360,13 +360,18 @@ class Deleting(Setup):
 
 
 class Toast(unittest.TestCase):
-    """The window offers UNDO only for what the Trash has."""
+    """The window offers UNDO only for what the Trash has, and moves on
+    to the photograph that takes the deleted one's place."""
 
-    def delete(self, how):
+    def delete(self, how, *, place=0, status=None, left=()):
         win = mock.Mock()
-        win.current = DIR / "20260905-bing-a.png"
-        gone = library.Deleted(win.current, "Beach huts", how)
-        with mock.patch.object(window, "delete_photo", return_value=gone):
+        win.status = status
+        path = DIR / "20260905-bing-a.png"
+        win.strip.selected.return_value = strip.Item(path)
+        win.strip.selected_index.return_value = place
+        gone = library.Deleted(path, "Beach huts", how)
+        with mock.patch.object(window, "delete_photo", return_value=gone), \
+             mock.patch.object(window, "collection", return_value=list(left)):
             window.Window.on_delete(win)
         return win, gone
 
@@ -379,6 +384,28 @@ class Toast(unittest.TestCase):
         win, _gone = self.delete(library.UNLINKED)
         win.offer_undo.assert_not_called()
         self.assertNotIn("moved to Trash", win.toast.call_args.args[0])
+
+    def test_the_next_one_takes_its_place(self):
+        left = [DIR / "20260904-bing-b.png", DIR / "20260903-bing-c.png"]
+        win, _gone = self.delete(library.TRASHED, place=1, left=left)
+        self.assertEqual(win.current, left[1])
+
+    def test_the_mornings_place_does_not_count(self):
+        left = [DIR / "20260904-bing-b.png", DIR / "20260903-bing-c.png"]
+        win, _gone = self.delete(library.TRASHED, place=1, left=left,
+                                 status=strip.Item(status=strip.FAILED))
+        self.assertEqual(win.current, left[0])
+
+    def test_the_last_one_leaves_nothing_selected(self):
+        win, _gone = self.delete(library.TRASHED)
+        self.assertIsNone(win.current)
+
+    def test_the_mornings_place_cannot_be_deleted(self):
+        win = mock.Mock()
+        win.strip.selected.return_value = strip.Item(status=strip.FAILED)
+        with mock.patch.object(window, "delete_photo") as delete:
+            window.Window.on_delete(win)
+        delete.assert_not_called()
 
 
 class Undo(unittest.TestCase):
@@ -398,13 +425,13 @@ class Undo(unittest.TestCase):
         win, gone = self.stand_in()
         restore = self.undo(win)
         restore.assert_called_once_with(gone.path)
-        win.on_pick.assert_called_once_with(None, gone.path)
+        win.put_on_wall.assert_called_once_with(gone.path)
         win.withdraw_undo.assert_called_once_with()
 
     def test_says_so_when_it_could_not(self):
         win, _gone = self.stand_in()
         self.undo(win, side_effect=OSError("File exists"))
-        win.on_pick.assert_not_called()
+        win.put_on_wall.assert_not_called()
         self.assertIn("still in the Trash", win.toast.call_args.args[0])
 
     def test_has_nothing_to_do_once_the_offer_has_lapsed(self):
@@ -412,4 +439,4 @@ class Undo(unittest.TestCase):
         win.undoable = None
         restore = self.undo(win)
         restore.assert_not_called()
-        win.on_pick.assert_not_called()
+        win.put_on_wall.assert_not_called()

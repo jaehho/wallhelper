@@ -2,9 +2,10 @@
 
     style     palette, faces, and the stylesheet built from them
     thumbs    a photograph on disk to something the strip can show
-    sheets    the guide and the shortcut list: overlays with no state
-    settings  the sources panel
-    window    the photograph, the plate, the strip
+    strip     every photograph saved, in one row, and the morning's place
+    plate     the caption over it
+    sheets    the key list: the one overlay, with no state
+    window    the caption and the strip, and the wall following them
     app       the Adw.Application, and the entry point
 
 GTK's version has to be pinned before anything imports from gi.repository, and

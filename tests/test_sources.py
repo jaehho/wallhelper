@@ -58,15 +58,6 @@ class Source(unittest.TestCase):
              mock.patch.object(sources, "download", side_effect=save):
             return sources.fetch_source("test", spec).path
 
-    def probe(self, spec, reply=None, error=None):
-        document = reply if isinstance(reply, bytes) \
-            else json.dumps(reply).encode()
-        with mock.patch.object(sources, "fetch_url",
-                               return_value=document,
-                               side_effect=error), \
-             mock.patch.object(sources, "download", side_effect=save):
-            return sources.probe_source("test", spec)
-
 
 class Fetch(Source):
     def test_the_filename_comes_from_the_date_the_id_and_the_suffix(self):
@@ -147,95 +138,6 @@ class Fetch(Source):
             self.assertIsNone(sources.fetch_source("test", {
                 "url": "https://example.com/api", "list": "data",
                 "image": "{path}"}).path)
-            taken.assert_not_called()
-
-
-class Probe(Source):
-    def test_a_spec_without_an_image_template_says_so(self):
-        self.assertEqual(self.probe({"url": "https://example.com"}),
-                         (False, "no image template"))
-
-    def test_an_unreachable_source_says_why(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api",
-                        "image": "{path}"},
-                       error=urllib.error.URLError("no route to host")),
-            (False, "no route to host"))
-
-    def test_a_reply_that_is_not_json_says_so(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api", "image": "{path}"},
-                       reply=b"<html>"),
-            (False, "the reply is not JSON"))
-
-    def test_a_missing_list_says_where_it_looked(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api", "list": "data",
-                        "image": "{path}"},
-                       reply={"images": []}),
-            (False, "nothing to pick from at data"))
-
-    def test_an_empty_list_is_the_same_complaint(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api", "list": "data",
-                        "image": "{path}"},
-                       reply={"data": []}),
-            (False, "nothing to pick from at data"))
-
-    def test_a_source_with_a_photograph_says_whose_it_is(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api",
-                        "image": "{path}", "title": "{title}",
-                        "credit": "{credit}"},
-                       reply={"path": "https://example.com/x.jpg",
-                              "title": "A title", "credit": "Someone"}),
-            (True, "A title"))
-
-    def test_the_credit_stands_in_when_there_is_no_title(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api",
-                        "image": "{path}", "credit": "{credit}"},
-                       reply={"path": "https://example.com/x.jpg",
-                              "credit": "Someone"}),
-            (True, "Someone"))
-
-    def test_a_choice_of_entries_is_said_how_many(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api", "list": "data",
-                        "image": "{path}", "title": "{t}"},
-                       reply={"data": [
-                           {"path": "https://example.com/1.jpg", "t": "One"},
-                           {"path": "https://example.com/2.jpg",
-                            "t": "Two"}]}),
-            (True, "One · 2 to choose from"))
-
-    def test_an_empty_image_template_says_no_photograph(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api",
-                        "image": "{path}"},
-                       reply={"other": "thing"}),
-            (False, "no photograph in the reply ({path})"))
-
-    def test_something_that_is_not_a_url_says_so(self):
-        self.assertEqual(
-            self.probe({"url": "https://example.com/api",
-                        "image": "{path}"},
-                       reply={"path": "not-a-url.jpg"}),
-            (False, "not a URL: not-a-url.jpg"))
-
-    def test_a_source_with_no_url_reads_a_literal_image(self):
-        # A url template that fills to nothing means the document is empty,
-        # but a literal image template needs no document at all.
-        self.assertEqual(
-            self.probe({"image": "https://example.com/x.jpg",
-                        "title": "A fixed one"}),
-            (True, "A fixed one"))
-
-    def test_nothing_about_the_probe_downloads(self):
-        with mock.patch.object(sources, "fetch_url",
-                               return_value=b'{"path": "/x.jpg"}'), \
-             mock.patch.object(sources, "download") as taken:
-            sources.probe_source("test", {"image": "{path}"})
             taken.assert_not_called()
 
 
@@ -351,6 +253,16 @@ class ListSource(Source):
             sources.list_source(
                 "test", {"url": "https://e.com", "image": "{p}"}, timeout=8)
         self.assertEqual(asked.call_args.kwargs["timeout"], 8)
+
+    def test_a_missing_list_says_where_it_looked(self):
+        got = self.listing({"url": "https://example.com/api", "list": "data",
+                            "image": "{path}"}, reply={"images": []})
+        self.assertEqual(got.complaint, "nothing to pick from at data")
+
+    def test_an_empty_list_is_the_same_complaint(self):
+        got = self.listing({"url": "https://example.com/api", "list": "data",
+                            "image": "{path}"}, reply={"data": []})
+        self.assertEqual(got.complaint, "nothing to pick from at data")
 
     def test_listing_never_downloads(self):
         with mock.patch.object(sources, "fetch_url",
