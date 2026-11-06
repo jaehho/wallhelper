@@ -11,6 +11,7 @@ import contextlib
 import re
 import struct
 import subprocess
+import time
 import unicodedata
 from pathlib import Path
 from typing import BinaryIO, NamedTuple
@@ -38,18 +39,33 @@ def slugify(text: str, limit: int = 44) -> str:
 
 
 def images(folder: Path) -> list[Path]:
+    """Newest first, by `order`."""
     try:
         return sorted(
             (p for p in folder.iterdir()
              if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES),
-            key=lambda p: p.name, reverse=True,
+            key=order, reverse=True,
         )
     except OSError:
         return []
 
 
+def order(path: Path) -> tuple[str, float, str]:
+    """Where a photograph sorts: by the date its name starts with, the one
+    the plate shows, else by the day it was saved, so a hand-dropped
+    holiday.jpg sits with that day and not ahead of every dated photo.
+    Within a day the later saved comes first, then the name decides."""
+    try:
+        saved = path.stat().st_mtime
+    except OSError:              # gone since the listing
+        saved = 0.0
+    day = name_day(path.name) or time.strftime("%Y%m%d",
+                                               time.localtime(saved))
+    return day, saved, path.name
+
+
 def collection() -> list[Path]:
-    """Everything on offer, newest name first. One folder, one photo each."""
+    """Everything on offer, newest first. One folder, one photo each."""
     return images(DIR)
 
 
@@ -128,6 +144,12 @@ def current_image() -> Path | None:
 CREDIT_RE = re.compile(r"^(.*?)\s*\(\s*©\s*(.+?)\s*\)\s*$")
 
 
+def name_day(name: str) -> str:
+    """The YYYYMMDD a filename starts with, else ''."""
+    first = Path(name).stem.split("-")[0]
+    return first if len(first) == _YYYYMMDD_LEN and first.isdigit() else ""
+
+
 def stamp(name: str) -> tuple[str, str]:
     """Filename -> ('2026·09·02', 'bing'). Both halves are optional: a photo
     you dropped in by hand has neither, and the plate just omits them.
@@ -135,13 +157,11 @@ def stamp(name: str) -> tuple[str, str]:
     The source is read by position rather than matched against a list of known
     names -- sources are config now, so there is no list to match against.
     """
-    parts = Path(name).stem.split("-")
-    date = ""
-    if parts and len(parts[0]) == _YYYYMMDD_LEN and parts[0].isdigit():
-        first = parts[0]
-        date = f"{first[:4]}·{first[4:6]}·{first[6:8]}"
-    else:
+    first = name_day(name)
+    if not first:
         return "", ""
+    date = f"{first[:4]}·{first[4:6]}·{first[6:8]}"
+    parts = Path(name).stem.split("-")
     # Old names were YYYYMMDD-HHMMSS-source; new ones are YYYYMMDD-source-id.
     for candidate in parts[1:3]:
         if candidate and not candidate.isdigit():
