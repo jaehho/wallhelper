@@ -1,8 +1,10 @@
 """Reading a photo off disk, and what the folder used to hold."""
 
 import io
+import os
 import struct
 import tempfile
+import time
 import unittest
 import zlib
 from pathlib import Path
@@ -49,6 +51,52 @@ class Stamp(unittest.TestCase):
 
     def test_a_hand_dropped_file_claims_nothing(self):
         self.assertEqual(library.stamp("holiday.jpg"), ("", ""))
+
+
+def local(day: str, hhmm: str = "1200") -> float:
+    """A local time on a YYYYMMDD day, as a file's mtime."""
+    return time.mktime(time.strptime(day + hhmm, "%Y%m%d%H%M"))
+
+
+class Order(unittest.TestCase):
+    def folder_of(self, *names_and_times: tuple[str, float]) -> Path:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        for name, saved in names_and_times:
+            path = Path(folder.name) / name
+            path.touch()
+            os.utime(path, (saved, saved))
+        return Path(folder.name)
+
+    def names(self, *names_and_times: tuple[str, float]) -> list[str]:
+        folder = self.folder_of(*names_and_times)
+        return [p.name for p in library.images(folder)]
+
+    def test_a_hand_dropped_photo_sits_on_the_day_it_was_saved(self):
+        self.assertEqual(
+            self.names(("20261102-bing-c.jpg", local("20261102", "0800")),
+                       ("holiday.jpg", local("20261103", "2300")),
+                       ("20261103-bing-b.jpg", local("20261103", "0800")),
+                       ("20261104-bing-a.jpg", local("20261104", "1500"))),
+            ["20261104-bing-a.jpg", "holiday.jpg", "20261103-bing-b.jpg",
+             "20261102-bing-c.jpg"])
+
+    def test_a_photo_saved_days_later_keeps_its_own_date(self):
+        # An APOD of 30 October saved on 3 November: the plate says
+        # 2026·10·30, so that is where it goes, ahead of the same day's
+        # Bing, which was saved first.
+        self.assertEqual(
+            self.names(("20261030-apod-flare.jpg", local("20261103", "2313")),
+                       ("20261030-bing-fly.jpg", local("20261030", "0815")),
+                       ("20261031-bing-ghosts.jpg", local("20261031", "0810")),
+                       ("20261101-bing-craft.jpg", local("20261101", "1234"))),
+            ["20261101-bing-craft.jpg", "20261031-bing-ghosts.jpg",
+             "20261030-apod-flare.jpg", "20261030-bing-fly.jpg"])
+
+    def test_the_same_moment_falls_back_to_the_name(self):
+        at = local("20261103")
+        self.assertEqual(self.names(("a.png", at), ("b.png", at)),
+                         ["b.png", "a.png"])
 
 
 def jpeg(width: int, height: int, *, cut_after: int | None = None) -> bytes:
