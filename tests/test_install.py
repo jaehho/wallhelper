@@ -26,6 +26,18 @@ INSTALLED = {"prefix/bin/wallhelper", f"share/applications/{ENTRY}"}
 SHARED = "share/applications/mimeinfo.cache"
 
 
+def without_paths(text, *paths):
+    """text with every occurrence of each path cut out.
+
+    The commands `make -n` prints name the checkout and the scratch
+    directory, and those can hold any word: an AUR helper builds under
+    ~/.cache/paru/clone/.
+    """
+    for path in paths:
+        text = text.replace(str(path), "")
+    return text
+
+
 def setUpModule():
     guard()
 
@@ -102,9 +114,10 @@ class Install(unittest.TestCase):
 
     def test_install_never_asks_for_privilege_a_service_or_a_package(self):
         out = self.make("-n", "install", "uninstall").stdout
+        commands = without_paths(out, CHECKOUT, self.scratch)
         for word in ("sudo", "systemctl", "pacman", "paru", "makepkg"):
             with self.subTest(word):
-                self.assertIsNone(re.search(rf"\b{word}\b", out))
+                self.assertIsNone(re.search(rf"\b{word}\b", commands))
 
     def test_a_second_install_changes_nothing(self):
         self.make("install")
