@@ -12,8 +12,10 @@ help:            ## this list
 test:            ## run the test suite
 	python -m unittest discover -s tests -t . -v
 
-lint:            ## ruff
-	ruff check wallhelper tests
+lint:            ## ruff, the version uv.lock pins
+	# --only-group: ruff alone, without building wallhelper into .venv,
+	# which the window could not use anyway (no system GTK in it).
+	uv run --only-group dev ruff check wallhelper tests
 
 run:             ## the window, from the source tree
 	python -m wallhelper gui

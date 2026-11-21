@@ -18,6 +18,12 @@ keywords = ["wallpaper", "hyprland", "hyprpaper", "bing"]
 # which is what lets the fetch sit in a systemd timer.
 dependencies = []
 
+# Lint only: `make lint` runs the ruff uv.lock pins, so a clone needs uv
+# and nothing else to check its style. The window's GTK still comes from
+# the distribution, as above.
+[dependency-groups]
+dev = ["ruff>=0.16"]
+
 [project.urls]
 Homepage = "https://github.com/jaehho/wallhelper"
 
