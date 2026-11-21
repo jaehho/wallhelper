@@ -311,9 +311,20 @@ window() {
   return "$status"
 }
 
+# Not while a window runs on the folder: it would lose its photos,
+# stubs and sockets mid-run, and the next run would lock a new file
+# and open a second window beside it.
+reset() {
+  own_folder
+  [ -e "$DEV" ] || return 0
+  exec 9> "$DEV/lock"
+  flock -n 9 || refuse "a window runs on $DEV; close it first"
+  rm -rf "$DEV"
+}
+
 case "${1:-}" in
   "") window ;;
   inside) inside ;;
-  reset) own_folder; rm -rf "$DEV" ;;
+  reset) reset ;;
   *) sed -n '2,/^[^#]/{/^#/p}' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
