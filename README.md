@@ -122,10 +122,13 @@ the shipped sources stay shipped, so they keep improving.
 
 ```sh
 make test     # python -m unittest discover -s tests -t .
-make lint     # ruff
+make lint     # ruff, the version uv.lock pins (uv run)
 make run      # the window, straight from the source tree
+make dev      # the window on Broadway, cut off from the desktop (scripts/dev)
 make install  # the launcher and desktop entry in ~/.local, no sudo
 ```
+
+`make run` is the real thing: the window on your desktop, setting your wallpaper from your collection. To try a change without either, `make dev` runs `scripts/dev`: the window in a browser tab on GTK Broadway, over a scratch collection of six seeded photographs, with its own XDG folders, a private session bus that cannot start any installed service, and stubs for `hyprctl`, `notify-send` and the link handler that log what they were asked. It prints the address to open, and `scripts/dev help` says the rest. Two things differ from the real window there: Undo always fails, because restoring from the Trash takes gvfs and the script keeps gvfs off its bus, and GTK's animations are off, because GTK 4.24.1's Broadway server often aborts with them on.
 
 `PRODUCT.md` is what this is and what it must never become. GitHub issues hold
 what is open, plus what was done and why (label `decision`) and known traps

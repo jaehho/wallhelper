@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+# The window to try a change on, cut off from the desktop and the real
+# collection (#25). It runs on GTK Broadway, so it shows in a browser
+# tab and never on the real display, with a scratch collection, its
+# own XDG folders, and a private session bus that cannot start any
+# installed service: not the notification daemon, the portals, gvfs or
+# an installed wallhelper. hyprctl, notify-send and the link handler
+# are stubs that write what they were asked to a log.
+#
+#   scripts/dev          the window: open the address it prints. It
+#                        stops when the window closes, on Ctrl+C, or
+#                        when this script is killed
+#   scripts/dev reset    delete the scratch folder; the next run seeds
+#                        it again
+#
+# WALLHELPER_DEV (default ~/.cache/wallhelper-dev) is the scratch
+# folder, and a second one runs a second window. Its first run seeds
+# six photographs: today's (TODAY); the one on the wall, which the
+# window opens on and marks BEFORE once the selection leaves it; one
+# with a title and no source link; and one dropped in by hand with
+# nothing known about it. A seed that fails or is cut short runs again
+# next time. The morning fetch is off in its config, so opening the
+# window asks Bing for nothing; put "autofetch": ["bing"] in
+# $WALLHELPER_DEV/config/wallhelper/config.json to try it. GTK's
+# animations are off too, for the second limit below; put
+# gtk-enable-animations=1 in $WALLHELPER_DEV/config/gtk-4.0/settings.ini
+# to try them.
+#
+# What lands in the scratch folder:
+#   hyprctl.log   every hyprctl call; moving the selection logs a
+#                 `hyprpaper wallpaper DEV-1,<photo>` for its one monitor
+#   notify.log    notify-send's arguments
+#   open.log      the links O and the source's name open
+#   broadwayd.log the display server's own output
+# HOME stays, so the window reads the desktop's palette as the real one
+# does; every path it writes is in the scratch folder.
+#
+# Two limits:
+#   - Undo after a delete always says it couldn't restore. The delete
+#     goes to the scratch Trash, but restoring reads trash:///, which
+#     takes gvfs, and this script leaves gvfs off its bus. That is this
+#     script's choice, not a fault in the change being tried; the
+#     restore itself is in tests/test_delete.py.
+#   - gtk4-broadwayd (GTK 4.24.1) aborts on its own assertion,
+#     (!reused_node->consumed), after some redraws with a browser
+#     attached. Through headless Chrome, D then U tripped it in 13 runs
+#     of 17 with GTK's animations on, and in none of 13 with them off,
+#     which is why they are off. If it still happens, the window goes
+#     with it and this script says which assertion. Run it again; the
+#     scratch folder is as it was left.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+DEV="${WALLHELPER_DEV:-${XDG_CACHE_HOME:-$HOME/.cache}/wallhelper-dev}"
+
+# Stubs first on the window's PATH. Each takes the place of a command
+# that reaches the desktop, and logs what it was asked instead.
+write_stubs() {
+  mkdir -p "$DEV/bin"
+  # One monitor, so a wallpaper push names it and lands in the log. No
+  # hyprpaper answers listactive, so the wall is whatever .current says.
+  cat > "$DEV/bin/hyprctl" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DEV/hyprctl.log"
+if [ "\$*" = "monitors -j" ]; then
+  echo '[{"name": "DEV-1", "focused": true}]'
+fi
+STUB
+  cat > "$DEV/bin/notify-send" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DEV/notify.log"
+STUB
+  cat > "$DEV/bin/xdg-open" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$DEV/open.log"
+STUB
+  chmod +x "$DEV/bin/hyprctl" "$DEV/bin/notify-send" "$DEV/bin/xdg-open"
+  # Without a portal GTK opens a link through the default handler for
+  # its scheme, which would be the real browser: make it the stub.
+  mkdir -p "$DEV/data/applications"
+  cat > "$DEV/data/applications/wallhelper-dev-open.desktop" <<ENTRY
+[Desktop Entry]
+Type=Application
+Name=wallhelper dev link log
+Exec=$DEV/bin/xdg-open %u
+NoDisplay=true
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
+ENTRY
+  cat > "$DEV/config/mimeapps.list" <<LIST
+[Default Applications]
+x-scheme-handler/http=wallhelper-dev-open.desktop
+x-scheme-handler/https=wallhelper-dev-open.desktop
+LIST
+}
+
+# A session bus with no service directory, so nothing on it can be
+# started by name. Pointing XDG_DATA_DIRS away is not enough: a plain
+# dbus-run-session still searches /usr/share/dbus-1/services and
+# ~/.local/share/dbus-1/services.
+write_bus_config() {
+  cat > "$DEV/bus.conf" <<CONF
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:dir=$DEV/run</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+CONF
+}
+
+# The first run's collection, written by wallhelper's own library so
+# the ledger is the one the window reads. Each photograph is a
+# gradient, named as the morning fetch names one. It starts from no
+# photos folder, so a seed that stopped halfway leaves nothing behind.
+seed() {
+  rm -rf "$DEV/photos"
+  mkdir -p "$DEV/photos"
+  /usr/bin/python3 -I - "$REPO" <<'PY'
+import os
+import sys
+import time
+
+sys.path.insert(0, sys.argv[1])
+import gi
+
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf, GLib
+
+from wallhelper.library import remember, set_wallpaper
+from wallhelper.paths import DIR
+
+DAY_S = 86400
+WIDE, HIGH = 1920, 1080
+# days ago, name, top and bottom colour, title, credit, link
+PHOTOS = [
+    (0, "bing-dev-dawn", (230, 126, 128), (45, 53, 59), "Dawn, seeded",
+     "A first place, Nowhere (© scripts/dev)", "https://example.org/dawn"),
+    (1, "bing-dev-moss", (167, 192, 128), (35, 42, 46), "Moss, seeded",
+     "A second place, Nowhere (© scripts/dev)", "https://example.org/moss"),
+    (2, "bing-dev-sea", (127, 187, 179), (45, 53, 59), "Sea, with no link",
+     "", ""),
+    (4, "bing-dev-dusk", (214, 153, 182), (35, 42, 46), "Dusk, seeded",
+     "A third place, Nowhere (© scripts/dev)", "https://example.org/dusk"),
+    (6, "bing-dev-sand", (219, 188, 127), (45, 53, 59), "Sand, seeded",
+     "A fourth place, Nowhere (© scripts/dev)", "https://example.org/sand"),
+]
+
+
+def draw_gradient(top, bottom, *, wide=WIDE, high=HIGH):
+    """Two RGB colours blended from the top edge to the bottom one."""
+    rows = []
+    for y in range(high):
+        mix = y / (high - 1)
+        pixel = bytes(round(a + (b - a) * mix)
+                      for a, b in zip(top, bottom, strict=True))
+        rows.append(pixel * wide)
+    return GdkPixbuf.Pixbuf.new_from_bytes(
+        GLib.Bytes.new(b"".join(rows)), GdkPixbuf.Colorspace.RGB, False, 8,
+        wide, high, wide * 3)
+
+
+def save_photo(image, path, when):
+    image.savev(str(path), "jpeg", ["quality"], ["85"])
+    os.utime(path, (when, when))
+
+
+now = time.time()
+for ago, name, top, bottom, title, credit, link in PHOTOS:
+    when = now - ago * DAY_S
+    path = DIR / f"{time.strftime('%Y%m%d', time.localtime(when))}-{name}.jpg"
+    save_photo(draw_gradient(top, bottom), path, when)
+    remember(path.name, title, credit, link)
+    if ago == 1:
+        set_wallpaper(path, push=False)
+# Dropped in by hand: no date in its name and no line in the ledger.
+save_photo(draw_gradient((157, 169, 160), (35, 42, 46)),
+           DIR / "holiday.jpg", now - 3 * DAY_S)
+PY
+}
+
+# A Broadway display nobody is serving: its port is 8080 + N.
+free_display() {
+  local n
+  for n in $(seq 5 60); do
+    if ! ss -Hltn "sport = :$((8080 + n))" | grep -q .; then
+      echo "$n"
+      return 0
+    fi
+  done
+  echo "scripts/dev: no free Broadway port from 8085 to 8140" >&2
+  return 1
+}
+
+refuse() {
+  echo "scripts/dev: refusing, $*" >&2
+  exit 1
+}
+
+# Only a folder this script made, an empty one, or none: stubs would be
+# written into any other, and reset would delete it.
+own_folder() {
+  [ ! -e "$DEV" ] || [ -f "$DEV/bus.conf" ] || [ -z "$(ls -A "$DEV")" ] \
+    || refuse "$DEV is not a folder scripts/dev made"
+}
+
+# The part that runs on the private bus: refuse unless nothing on it
+# can be started and the stubs are the ones in reach, then the window,
+# from this tree.
+inside() {
+  local names handler
+  names="$(gdbus call --session --dest org.freedesktop.DBus \
+    --object-path /org/freedesktop/DBus \
+    --method org.freedesktop.DBus.ListActivatableNames)"
+  [ "$names" = "(['org.freedesktop.DBus'],)" ] \
+    || refuse "this bus can start $names"
+  [ "$(command -v hyprctl)" = "$DEV/bin/hyprctl" ] \
+    || refuse "hyprctl is $(command -v hyprctl)"
+  handler="$(gio mime x-scheme-handler/https | sed -n 1p)"
+  case "$handler" in
+    *wallhelper-dev-open.desktop) ;;
+    *) refuse "a link would open in: $handler" ;;
+  esac
+  exec env WALLHELPER_SRC="$REPO" "$REPO/scripts/wallhelper-live" gui
+}
+
+window() {
+  case "$DEV" in
+    *:*) refuse "WALLHELPER_DEV has a colon, which PATH would split" ;;
+  esac
+  # A socket path past 108 bytes is cut short without an error.
+  [ "${#DEV}" -le 70 ] || refuse "WALLHELPER_DEV is too long for sockets"
+  own_folder
+  mkdir -p "$DEV/config/wallhelper" "$DEV/config/gtk-4.0" "$DEV/data" \
+    "$DEV/cache" "$DEV/state" "$DEV/run"
+  chmod 700 "$DEV/run"
+  exec 9> "$DEV/lock"
+  if ! flock -n 9; then
+    echo "scripts/dev: a window already runs on $DEV; set" \
+      "WALLHELPER_DEV for a second one" >&2
+    exit 1
+  fi
+  # Everything the window and its stubs see. Never the real display,
+  # compositor or bus: they are dropped here, and dbus-run-session
+  # sets its own bus.
+  unset WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE \
+    DBUS_SESSION_BUS_ADDRESS WALLHELPER_SRC
+  # WALLHELPER_DEV too, or `inside` would look for it under the scratch
+  # XDG_CACHE_HOME.
+  export WALLHELPER_DEV="$DEV" \
+    XDG_CONFIG_HOME="$DEV/config" XDG_DATA_HOME="$DEV/data" \
+    XDG_CACHE_HOME="$DEV/cache" XDG_STATE_HOME="$DEV/state" \
+    XDG_RUNTIME_DIR="$DEV/run" \
+    WALLHELPER_DIR="$DEV/photos" \
+    WALLHELPER_CONFIG="$DEV/config/wallhelper/config.json" \
+    PATH="$DEV/bin:$PATH" GDK_DEBUG=no-portals GTK_A11Y=none
+  write_stubs
+  write_bus_config
+  [ -f "$WALLHELPER_CONFIG" ] || echo '{"autofetch": []}' \
+    > "$WALLHELPER_CONFIG"
+  # GTK reads its settings from here, the scratch XDG_CONFIG_HOME. With
+  # animations on, broadwayd often aborts (the header's second limit).
+  [ -f "$XDG_CONFIG_HOME/gtk-4.0/settings.ini" ] \
+    || printf '[Settings]\ngtk-enable-animations=0\n' \
+      > "$XDG_CONFIG_HOME/gtk-4.0/settings.ini"
+  # The mark goes in only once the seed has finished, so one that failed
+  # or was cut short runs again rather than leave an empty strip.
+  if [ ! -f "$DEV/seeded" ]; then
+    seed
+    : > "$DEV/seeded"
+  fi
+
+  local display
+  display="$(free_display)"
+  # Loopback only: broadwayd serves every address unless told.
+  gtk4-broadwayd --address 127.0.0.1 ":$display" \
+    > "$DEV/broadwayd.log" 2>&1 9>&- &
+  local broadwayd=$!
+  # The pid goes in now: the trap runs after this function's locals go.
+  trap "kill $broadwayd 2> /dev/null || true" EXIT
+  for _ in $(seq 50); do
+    ss -Hltn "sport = :$((8080 + display))" | grep -q . && break
+    if ! kill -0 "$broadwayd" 2> /dev/null; then
+      echo "scripts/dev: broadwayd stopped; see $DEV/broadwayd.log" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  echo "wallhelper on http://127.0.0.1:$((8080 + display))/ (scratch in $DEV)"
+  GDK_BACKEND=broadway BROADWAY_DISPLAY=":$display" \
+    dbus-run-session --config-file="$DEV/bus.conf" -- "$0" inside &
+  local session=$!
+  # Ctrl+C, or a kill of this script, takes broadwayd down: the window
+  # goes with its display, and the bus with the window.
+  trap "kill $broadwayd 2> /dev/null; wait $session || true; exit 130" \
+    INT TERM
+  local status=0
+  wait "$session" || status=$?
+  # GTK's Broadway server can abort on its own assertion, and the window
+  # then goes with it: say which went first.
+  if ! kill -0 "$broadwayd" 2> /dev/null; then
+    echo "scripts/dev: broadwayd stopped first:" \
+      "$(grep -m1 -o 'assertion failed.*' "$DEV/broadwayd.log" \
+         || echo "see $DEV/broadwayd.log")" >&2
+  fi
+  return "$status"
+}
+
+# Not while a window runs on the folder: it would lose its photos,
+# stubs and sockets mid-run, and the next run would lock a new file
+# and open a second window beside it.
+reset() {
+  own_folder
+  [ -e "$DEV" ] || return 0
+  exec 9> "$DEV/lock"
+  flock -n 9 || refuse "a window runs on $DEV; close it first"
+  rm -rf "$DEV"
+}
+
+case "${1:-}" in
+  "") window ;;
+  inside) inside ;;
+  reset) reset ;;
+  *) sed -n '2,/^[^#]/{/^#/p}' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
