@@ -15,12 +15,15 @@
 #
 # WALLHELPER_DEV (default ~/.cache/wallhelper-dev) is the scratch
 # folder, and a second one runs a second window. Its first run seeds
-# six photographs, among them today's (TODAY), the one on the wall
-# (BEFORE), one with a title and no source link, and one dropped in by
-# hand with nothing known about it. The morning fetch is off in its
-# config, so opening the window asks Bing for nothing; put
-# "autofetch": ["bing"] in $WALLHELPER_DEV/config/wallhelper/config.json
-# to try it.
+# six photographs: today's (TODAY); the one on the wall, which the
+# window opens on and marks BEFORE once the selection leaves it; one
+# with a title and no source link; and one dropped in by hand with
+# nothing known about it. The morning fetch is off in its config, so
+# opening the window asks Bing for nothing; put "autofetch": ["bing"]
+# in $WALLHELPER_DEV/config/wallhelper/config.json to try it. GTK's
+# animations are off too, for the second limit below; put
+# gtk-enable-animations=1 in $WALLHELPER_DEV/config/gtk-4.0/settings.ini
+# to try them.
 #
 # What lands in the scratch folder:
 #   hyprctl.log   every hyprctl call; moving the selection logs a
@@ -31,15 +34,19 @@
 # HOME stays, so the window reads the desktop's palette as the real one
 # does; every path it writes is in the scratch folder.
 #
-# Two limits, both outside this script:
-#   - Undo after a delete says it couldn't restore. The delete goes to
-#     the scratch Trash, but restoring reads trash:///, which takes
-#     gvfs, and this bus cannot start it.
-#   - gtk4-broadwayd (GTK 4.24.1) can abort on its own assertion in
-#     append_node_ops after some redraws with a browser attached (D,
-#     U, then ? tripped it in six runs of seven through headless
-#     Chrome). The window goes with it, and this script says which
-#     assertion. Run it again; the scratch folder is as it was left.
+# Two limits:
+#   - Undo after a delete always says it couldn't restore. The delete
+#     goes to the scratch Trash, but restoring reads trash:///, which
+#     takes gvfs, and this script leaves gvfs off its bus. That is this
+#     script's choice, not a fault in the change being tried; the
+#     restore itself is in tests/test_delete.py.
+#   - gtk4-broadwayd (GTK 4.24.1) aborts on its own assertion,
+#     (!reused_node->consumed), after some redraws with a browser
+#     attached. Through headless Chrome, D then U tripped it in 13 runs
+#     of 17 with GTK's animations on, and in none of 13 with them off,
+#     which is why they are off. If it still happens, the window goes
+#     with it and this script says which assertion. Run it again; the
+#     scratch folder is as it was left.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -226,8 +233,8 @@ window() {
   # A socket path past 108 bytes is cut short without an error.
   [ "${#DEV}" -le 70 ] || refuse "WALLHELPER_DEV is too long for sockets"
   own_folder
-  mkdir -p "$DEV/config/wallhelper" "$DEV/data" "$DEV/cache" \
-    "$DEV/state" "$DEV/run"
+  mkdir -p "$DEV/config/wallhelper" "$DEV/config/gtk-4.0" "$DEV/data" \
+    "$DEV/cache" "$DEV/state" "$DEV/run"
   chmod 700 "$DEV/run"
   exec 9> "$DEV/lock"
   if ! flock -n 9; then
@@ -253,6 +260,11 @@ window() {
   write_bus_config
   [ -f "$WALLHELPER_CONFIG" ] || echo '{"autofetch": []}' \
     > "$WALLHELPER_CONFIG"
+  # GTK reads its settings from here, the scratch XDG_CONFIG_HOME. With
+  # animations on, broadwayd often aborts (the header's second limit).
+  [ -f "$XDG_CONFIG_HOME/gtk-4.0/settings.ini" ] \
+    || printf '[Settings]\ngtk-enable-animations=0\n' \
+      > "$XDG_CONFIG_HOME/gtk-4.0/settings.ini"
   [ -d "$WALLHELPER_DIR" ] || seed
 
   local display
