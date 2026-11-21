@@ -18,9 +18,10 @@
 # six photographs: today's (TODAY); the one on the wall, which the
 # window opens on and marks BEFORE once the selection leaves it; one
 # with a title and no source link; and one dropped in by hand with
-# nothing known about it. The morning fetch is off in its config, so
-# opening the window asks Bing for nothing; put "autofetch": ["bing"]
-# in $WALLHELPER_DEV/config/wallhelper/config.json to try it. GTK's
+# nothing known about it. A seed that fails or is cut short runs again
+# next time. The morning fetch is off in its config, so opening the
+# window asks Bing for nothing; put "autofetch": ["bing"] in
+# $WALLHELPER_DEV/config/wallhelper/config.json to try it. GTK's
 # animations are off too, for the second limit below; put
 # gtk-enable-animations=1 in $WALLHELPER_DEV/config/gtk-4.0/settings.ini
 # to try them.
@@ -115,8 +116,10 @@ CONF
 
 # The first run's collection, written by wallhelper's own library so
 # the ledger is the one the window reads. Each photograph is a
-# gradient, named as the morning fetch names one.
+# gradient, named as the morning fetch names one. It starts from no
+# photos folder, so a seed that stopped halfway leaves nothing behind.
 seed() {
+  rm -rf "$DEV/photos"
   mkdir -p "$DEV/photos"
   /usr/bin/python3 -I - "$REPO" <<'PY'
 import os
@@ -265,7 +268,12 @@ window() {
   [ -f "$XDG_CONFIG_HOME/gtk-4.0/settings.ini" ] \
     || printf '[Settings]\ngtk-enable-animations=0\n' \
       > "$XDG_CONFIG_HOME/gtk-4.0/settings.ini"
-  [ -d "$WALLHELPER_DIR" ] || seed
+  # The mark goes in only once the seed has finished, so one that failed
+  # or was cut short runs again rather than leave an empty strip.
+  if [ ! -f "$DEV/seeded" ]; then
+    seed
+    : > "$DEV/seeded"
+  fi
 
   local display
   display="$(free_display)"
