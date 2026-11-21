@@ -1,6 +1,6 @@
 # wallhelper - one new photograph a day, and the ones you kept.
 
-.PHONY: help test lint run install uninstall package srcinfo clean
+.PHONY: help test lint run dev install uninstall package srcinfo clean
 
 PREFIX  ?= $(HOME)/.local
 DATADIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)
@@ -19,6 +19,9 @@ lint:            ## ruff, the version uv.lock pins
 
 run:             ## the window, from the source tree
 	python -m wallhelper gui
+
+dev:             ## the window on Broadway, over a scratch collection
+	scripts/dev
 
 install:         ## live launcher in ~/.local for this user (no sudo)
 	# One script: each run is this checkout on the system python, so
